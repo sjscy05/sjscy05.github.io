@@ -169,7 +169,7 @@ function v2RenderSetup() {
             app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
                 <h2>🏫 院长模拟器</h2>
                 <div class="story-box typing-active">${bg}</div>
-                <button class="btn" onclick="(function(){${v2RenderSetup.toString()}; v2RenderSetup();})()" style="margin-top:12px;">开始 →</button>
+                <button class="btn" onclick="v2RenderSetup()" style="margin-top:12px;">开始 →</button>
             </div>`;
         },
         // step 1: 选择院系
@@ -461,36 +461,22 @@ function v2AddAction(type, id, title, days, effect) {
     }
 }
 
-// 排程队列增量更新（不重新渲染整个页面，避免 flicker）
+// 排程队列增量更新（直接更新 innerHTML，消除 DOM 替换导致的闪烁和 Tab 跳回）
 function v2RenderQueueOnly(area) {
-    // 更新队列显示
-    const queueContainer = area.querySelector('.schedule-queue') || area;
-    let html = `<div class="schedule-queue">`;
-    if (v2.actionQueue.length === 0) {
-        html += `<div class="queue-empty">暂无排程。选择下面的行动后自动加入。</div>`;
-    } else {
-        v2.actionQueue.forEach((t, i) => {
-            const label = t.type === 'daily' ? '📋' : t.type === 'focus' ? '🎯' : '⚡';
-            html += `<div class="queue-item"><span>${label} ${t.title}</span>
-                <span style="display:flex;gap:6px;"><span style="color:#8fa8b8;">${t.days}天</span>
-                <span style="color:#e74c3c;cursor:pointer;" onclick="v2RemoveQueueItem(${i})">✕</span></span></div>`;
-        });
-    }
-    html += `</div>`;
-
-    // 保留 Tab 区域，只替换队列部分
-    const existingTabs = area.querySelector('#v2ActionTabs');
-    if (existingTabs) {
-        // 替换队列 HTML
-        const queueDiv = document.createElement('div');
-        queueDiv.innerHTML = html + '<div id="v2ActionTabs"></div>';
-        const newQueue = queueDiv.querySelector('.schedule-queue');
-        const oldQueue = area.querySelector('.schedule-queue');
-        if (newQueue && oldQueue) {
-            oldQueue.replaceWith(newQueue);
-        } else if (newQueue) {
-            existingTabs.before(queueDiv.querySelector('.schedule-queue'));
+    const queueEl = area.querySelector('.schedule-queue');
+    if (queueEl) {
+        let content = '';
+        if (v2.actionQueue.length === 0) {
+            content = `<div class="queue-empty">暂无排程。选择下面的行动后自动加入。</div>`;
+        } else {
+            v2.actionQueue.forEach((t, i) => {
+                const label = t.type === 'daily' ? '📋' : t.type === 'focus' ? '🎯' : '⚡';
+                content += `<div class="queue-item"><span>${label} ${t.title}</span>
+                    <span style="display:flex;gap:6px;"><span style="color:#8fa8b8;">${t.days}天</span>
+                    <span style="color:#e74c3c;cursor:pointer;" onclick="v2RemoveQueueItem(${i})">✕</span></span></div>`;
+            });
         }
+        queueEl.innerHTML = content;
     }
 
     // 更新执行按钮状态
@@ -637,8 +623,10 @@ function v2RenderExecution() {
     const appV2 = document.getElementById('app');
     const dept = DEPT_CONFIG[v2.deptType];
 
-    // 修复黑屏：先移除 page-transition-out，避免页面保持隐藏
+    // 修复黑屏：移除过渡动画，强制重置 opacity/transform 避免动画 fill 残留
     appV2.classList.remove('page-transition-out');
+    appV2.style.opacity = '1';
+    appV2.style.transform = 'none';
 
     v2._execStatSnapshot = {
         funds: v2.funds,
