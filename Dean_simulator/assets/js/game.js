@@ -11,7 +11,7 @@ import {
 } from './events.js';
 
 // ========== 辅助函数 ==========
-function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+function clamp(v, min, max) { return Math.max(min, Math.max(v, max)); }
 function v2Pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ========== 状态初始化 ==========
@@ -48,62 +48,34 @@ function v2DefaultState() {
         },
 
         actionQueue: [],
-        pendingExecutionQueue: null,
+        messages: [],
+        clock: { hour: 9, minute: 0 },
+        gameOver: false,
+        currentEvent: null,
+        currentEventResolved: false,
         executionMode: false,
         executionPhase: '',
+        executionIndex: 0,
+        pendingExecutionQueue: null,
         executionTimeline: null,
         executionStep: 0,
-        executionIndex: 0,
         executionLogs: [],
         executionRandomEvents: null,
         executionRandomEventIdx: 0,
         executionPendingPersonal: false,
-        executionQueue: null,
-
-        messages: [],
+        executionPendingEvent: null,
         titles: [],
         achievements: [],
-        admissionStreak: 0,
-        prevEval: 30,
-
-        currentEvent: null,
-        currentEventResolved: false,
         termEndShown: false,
-        gameOver: false,
-
-        // 成就系统
-        metaPoints: 0,
+        admissionStreak: 0,
+        prevEval: 0,
+        typingTimer: null,
+        _execStatSnapshot: null,
+        _activeTab: 'daily'  // 跟踪当前选中的行动Tab
     };
 }
 
-// ========== 存档系统 (localStorage) ==========
-function v2MetaLoad() {
-    try {
-        const raw = localStorage.getItem('dean_meta');
-        return raw ? JSON.parse(raw) : { points: 0, ach: [], unlocks: [], totalRuns: 0, bestScore: 0 };
-    } catch { return { points: 0, ach: [], unlocks: [], totalRuns: 0, bestScore: 0 }; }
-}
-function v2MetaSave(meta) {
-    try { localStorage.setItem('dean_meta', JSON.stringify(meta)); } catch {}
-}
-function v2SaveGame(slot) { // slot: 'auto' or 1-3
-    try {
-        v2._saveVersion = 1; v2._saveTime = Date.now();
-        localStorage.setItem('dean_save_' + slot, JSON.stringify(v2));
-    } catch {}
-}
-function v2LoadGame(slot) {
-    try {
-        const raw = localStorage.getItem('dean_save_' + slot);
-        if (raw) { v2 = JSON.parse(raw); v2RenderPlaying(); return true; }
-    } catch {}
-    return false;
-}
-function v2HasSave(slot) {
-    try { return !!localStorage.getItem('dean_save_' + slot); } catch { return false; }
-}
-
-// ========== 数值更新 ==========
+// ========== 数值操作 ==========
 function v2UpdateStats() {
     v2.funds = clamp(v2.funds, -20, 100);
     v2.academicRep = clamp(v2.academicRep, 0, 100);
@@ -114,348 +86,268 @@ function v2UpdateStats() {
 
 function v2ApplyEffect(effect) {
     if (!effect) return;
-    if (effect.funds !== undefined) v2.funds += effect.funds;
-    if (effect.academicRep !== undefined) v2.academicRep += effect.academicRep;
-    if (effect.adminRep !== undefined) v2.adminRep += effect.adminRep;
-    if (effect.morale !== undefined) v2.morale += effect.morale;
-    if (effect.studentEval !== undefined) v2.studentEval += effect.studentEval;
-    if (effect.reputation !== undefined) v2.academicRep += effect.reputation;
+    for (const [k, v] of Object.entries(effect)) {
+        if (k === 'reputation') {
+            v2.academicRep = clamp(v2.academicRep + v, 0, 100);
+        } else if (k in v2) {
+            const nv = v2[k] + v;
+            v2[k] = clamp(nv, -20, 100);
+        }
+    }
 }
 
 function v2CalcAvailableDays() {
-    const base = 28 + 2; // 基础 + 咖啡机
-    let extra = 0;
-    if (v2.officeDecors && v2.officeDecors.includes('coffee')) extra += 2;
-    return base + extra;
-}
-
-// ========== 成就与称号 ==========
-function v2CheckAchievements() {
-    const meta = v2MetaLoad();
-    meta.ach = meta.ach || [];
-
-    // iron triangle: 下属忠诚同时>80
-    if (v2.staff && v2.staff.every(s => s.loyalty >= 80) && !meta.ach.includes('all_loyal')) {
-        const a = ACHIEVEMENTS.find(x => x.id === 'all_loyal');
-        if (a) { meta.ach.push('all_loyal'); meta.points += a.points; v2PushMail(`成就解锁：${a.name}（+${a.points}周目点）`); }
+    let base = 28;
+    if (v2.flags.officeDecor && v2.flags.officeDecor.includes('coffee')) {
+        base += 2;
     }
-    // admission streak 3连涨
-    if (v2.admissionStreak >= 3 && !meta.ach.includes('admission_streak')) {
-        const a = ACHIEVEMENTS.find(x => x.id === 'admission_streak');
-        if (a) { meta.ach.push('admission_streak'); meta.points += a.points; v2PushMail(`成就解锁：${a.name}（+${a.points}周目点）`); }
+    return base;
+}
+
+// ========== 消息/邮件系统 ==========
+function v2PushMail(text) {
+    v2.messages.push({ text, turn: v2.totalMonth });
+}
+
+// ========== 存档 ==========
+function v2SaveGame(slot) {
+    if (!slot) slot = 'auto';
+    const data = JSON.parse(JSON.stringify(v2));
+    data._saveVersion = 2;
+    try {
+        localStorage.setItem('dean_sim_save_' + slot, JSON.stringify(data));
+        v2PushMail(`📁 已存档（${slot}）`);
+        v2RenderMessages();
+    } catch (e) {
+        alert('存档失败：' + e.message);
     }
-    v2MetaSave(meta);
 }
 
-function v2UnlockTitles() {
-    TITLE_RULES.forEach(r => {
-        if (r.cond(v2) && !v2.titles.find(t => t.id === r.id)) {
-            v2.titles.push({ id: r.id, name: r.name });
-        }
-    });
+function v2LoadGame(slot) {
+    if (!slot) slot = 'auto';
+    const raw = localStorage.getItem('dean_sim_save_' + slot);
+    if (!raw) return alert('该存档位为空。');
+    try {
+        const data = JSON.parse(raw);
+        Object.assign(v2, data);
+        v2.executionMode = false;
+        v2.typingTimer = null;
+        v2PushMail('📂 读档完成');
+        v2RenderPlaying();
+    } catch (e) {
+        alert('读档失败：存档数据损坏。');
+    }
 }
 
-// ========== 消息系统 ==========
-function v2PushMail(text, type = 'info') {
-    v2.messages.push({ text, type, time: Date.now() });
-    if (v2.messages.length > 50) v2.messages.splice(0, v2.messages.length - 50);
+function v2HasSave(slot) {
+    return !!localStorage.getItem('dean_sim_save_' + slot);
 }
 
-function v2QueueAchievementToast(name, points) {
-    const host = document.getElementById('v2ToastHost');
-    if (!host) return;
-    const el = document.createElement('div');
-    el.className = 'v2-ach-toast';
-    el.textContent = `🏆 ${name} (+${points})`;
-    host.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('show'));
-    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 3000);
+function v2MetaLoad() {
+    try {
+        const raw = localStorage.getItem('dean_sim_meta');
+        if (raw) return JSON.parse(raw);
+    } catch (e) { /* ignore */ }
+    return { points: 0, ach: [], totalRuns: 0, bestScore: 0 };
 }
 
-// ========== 下属能力计算 ==========
-function useStaffAbility(staffId, statName, maxBonus) {
-    const staff = v2.staff.find(s => s.id === staffId);
-    if (!staff) return 0;
-    const ratio = (staff.loyalty + staff.ability) / 200;
-    const bonus = Math.round(maxBonus * ratio);
-    return bonus;
-}
-
-// ========== 关系系统 ==========
-function adjustRelation(key, delta) {
-    if (!v2.relations[key]) return;
-    v2.relations[key].favor = clamp(v2.relations[key].favor + delta, 0, 100);
-}
-
-// ========== 初始化下属 ==========
-function v2InitStaff() {
-    const staff = [];
-    STAFF_TEMPLATES.forEach(t => {
-        const pool = STAFF_PERSONA_POOL[t.id];
-        if (!pool || pool.length === 0) return;
-        const persona = v2Pick(pool);
-        const ability = Math.floor(Math.random() * (persona.abilityRange[1] - persona.abilityRange[0] + 1)) + persona.abilityRange[0];
-        const loyalty = Math.floor(Math.random() * (persona.loyaltyRange[1] - persona.loyaltyRange[0] + 1)) + persona.loyaltyRange[0];
-        staff.push({
-            id: t.id,
-            title: t.title,
-            name: persona.name,
-            trait: persona.trait,
-            profile: persona.profile,
-            ability: clamp(ability, 0, 100),
-            loyalty: clamp(loyalty, 0, 100),
-            quest: persona.quest ? { ...persona.quest } : null,
-            flaw: persona.flaw || '',
-            questCompleted: false
-        });
-    });
-    v2.staff = staff;
+function v2MetaSave(meta) {
+    try { localStorage.setItem('dean_sim_meta', JSON.stringify(meta)); }
+    catch (e) { /* ignore */ }
 }
 
 // ========== 开局向导 ==========
 function v2RenderSetup() {
+    v2.gameOver = false;
     const app = document.getElementById('app');
-    v2 = v2DefaultState();
+    let step = 0; // 向导步骤
 
-    let step = 0;
-    const maxStep = 5;
-
-    function renderStep() {
-        app.classList.remove('page-transition-in');
-        void app.offsetWidth;
-        app.classList.add('page-transition-in');
-
-        let html = `<div class="setup-wizard"><h2>📋 院长配置向导</h2>
-            <div style="color:#8fa8b8;text-align:center;font-size:0.82em;margin-bottom:10px;">第 ${step+1} / ${maxStep} 步</div>`;
-
-        if (step === 0) {
-            const prologue = `你坐在校长办公室的皮椅上，对面的人递过来一份文件。
-
-「学院交给你了。需要你做的，我都在这里写了。学生、教师、经费、评估——每一项都跑不掉。」
-
-你翻开文件，第一页写着院系的名称。
-
-这将是你的任期。有人会记住你的名字，有些人在等你犯错。`;
-            html += `<div class="setup-prologue">${prologue}</div>
-                <div class="wizard-nav"><button class="btn" id="wizardStart">开始配置 →</button></div>`;
-        } else if (step === 1) {
-            const depts = Object.entries(DEPT_CONFIG);
-            html += `<label class="wiz-label">🏫 选择你的院系</label>
-                <div class="setup-row">`;
-            depts.forEach(([key, d]) => {
-                const initStr = Object.entries(d.init).map(([k, v]) => `${{'academicRep':'学术','funds':'经费','adminRep':'行政','morale':'士气','studentEval':'学生'}[k]||k}${v>=0?'+':''}${v}`).join(', ');
-                html += `<button class="btn compact dept-btn" data-dept="${key}">${d.icon} ${d.name}<br><span style="font-size:0.78em;color:#b0cec4;">${initStr}</span></button>`;
-            });
-            html += `</div>`;
-        } else if (step === 2) {
-            const curricula = [
-                { key: 'theoretical', label: '📘 理论扎实', desc: '学术每学期 +2' },
-                { key: 'applied', label: '🛠️ 应用技能', desc: '学生评价每学期 +2' },
-                { key: 'balanced', label: '⚖️ 均衡培养', desc: '学术+1, 学生+1' },
-                { key: 'research', label: '🔬 研究导向', desc: '学术+3, 经费-1' },
-                { key: 'industry', label: '🏭 产教融合', desc: '经费+2, 学生+2, 行政+1' },
-                { key: 'global', label: '🌍 国际化', desc: '学术+1, 学生+2, 行政+1' }
-            ];
-            html += `<label class="wiz-label">📚 选择培养定位</label>
-                <div class="setup-row" style="grid-template-columns:repeat(3,1fr);">`;
-            curricula.forEach(c => {
-                html += `<button class="btn compact cur-btn" data-cur="${c.key}">${c.label}<br><span style="font-size:0.75em;color:#b0cec4;">${c.desc}</span></button>`;
-            });
-            html += `</div>`;
-        } else if (step === 3) {
-            const diffs = Object.entries(DIFFICULTY_PRESETS);
-            html += `<label class="wiz-label">⚡ 难度选择</label>
-                <div class="setup-row" style="grid-template-columns:repeat(3,1fr);">`;
-            diffs.forEach(([key, d]) => {
-                const initStr = Object.entries(d.init).map(([k, v]) => `${{'academicRep':'学术','funds':'经费','adminRep':'行政','morale':'士气','studentEval':'学生'}[k]||k}${v>=0?'+':''}${v}`).join(', ');
-                html += `<button class="btn compact diff-btn" data-diff="${key}">${d.name}<br><span style="font-size:0.75em;color:#b0cec4;">${initStr || '无修正'}</span></button>`;
-            });
-            html += `</div>`;
-        } else if (step === 4) {
-            html += `<label class="wiz-label">✏️ 输入你的名字</label>
-                <input class="wiz-input" id="nameInput" placeholder="例如：张院长" value="院长" maxlength="8">
-                <div class="wizard-nav" style="margin-top:14px;">
-                    <button class="btn" id="finishSetup">开始任期 →</button>
-                </div>`;
+    const steps = [
+        // step 0: 开场叙事
+        () => {
+            const bg = BACKGROUND_POOL.age[Math.floor(Math.random() * BACKGROUND_POOL.age.length)];
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>🏫 院长模拟器</h2>
+                <div class="story-box typing-active">${bg}</div>
+                <button class="btn" onclick="(function(){${v2RenderSetup.toString()}; v2RenderSetup();})()" style="margin-top:12px;">开始 →</button>
+            </div>`;
+        },
+        // step 1: 选择院系
+        () => {
+            const deptOptions = Object.entries(DEPT_CONFIG).map(([k, v]) =>
+                `<div class="dept-option" onclick="v2SelectDept('${k}')">
+                    <span class="dept-icon">${v.icon}</span>
+                    <span class="dept-name">${v.name}</span>
+                    <span class="dept-init">${Object.entries(v.init||{}).map(([kk, vv]) => `${{'academicRep':'学术','funds':'经费','studentEval':'学生','adminRep':'行政','morale':'士气'}[kk]||kk}${vv>=0?'+':''}${vv}`).join(', ')}</span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>🏫 选择你的院系</h2>
+                <div style="margin:16px 0;">${deptOptions}</div>
+                <div style="color:#7f9aab;font-size:0.82em;">不同的院系有截然不同的初始资源和挑战。</div>
+            </div>`;
+        },
+        // step 2: 培养方案
+        () => {
+            const curOptions = Object.entries(CURRICULUM_PASSIVE).map(([k, v]) =>
+                `<div class="dept-option" onclick="v2SelectCurriculum('${k}')">
+                    <span class="dept-name">${v.name}</span>
+                    <span style="display:block;font-size:0.78em;color:#8fa8b8;">
+                        ${Object.entries(v).filter(([kk]) => kk !== 'name').map(([kk, vv]) => `${kk}每月+${vv}`).join('，')}
+                    </span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>📚 培养方案</h2>
+                <div style="margin:16px 0;">${curOptions}</div>
+                <div style="color:#7f9aab;font-size:0.82em;">每学期结算时提供被动数值加成。</div>
+            </div>`;
+        },
+        // step 3: 难度选择
+        () => {
+            const diffOptions = Object.entries(DIFFICULTY_PRESETS).map(([k, v]) =>
+                `<div class="dept-option" onclick="v2SelectDifficulty('${k}')">
+                    <span class="dept-name">${v.name}</span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>⚙️ 选择难度</h2>
+                <div style="margin:16px 0;">${diffOptions}</div>
+            </div>`;
+        },
+        // step 4: 姓名
+        () => {
+            app.innerHTML = `<div class="page-transition-in" style="max-width:480px;margin:auto;">
+                <h2>✍️ 输入你的名字</h2>
+                <div style="margin:20px 0;">
+                    <input id="v2NameInput" class="game-input" placeholder="输入院长姓名" maxlength="10" style="width:100%;box-sizing:border-box;padding:10px;">
+                </div>
+                <button class="btn" onclick="v2ConfirmName()">确认 →</button>
+            </div>`;
+            setTimeout(() => document.getElementById('v2NameInput')?.focus(), 100);
         }
+    ];
 
-        if (step > 0 && step <= 3) {
-            html += `<div class="wizard-nav"><button class="btn" id="wizardNext">下一步 →</button></div>`;
-        }
-        if (step > 0 && step <= 4) {
-            html += `<button class="wizard-back-link" id="wizardBack">← 上一步</button>`;
-        }
+    window.v2SelectDept = (dept) => { v2.deptType = dept; step = 2; v2RenderSetup(); };
+    window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; step = 3; v2RenderSetup(); };
+    window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; step = 4; v2RenderSetup(); };
+    window.v2ConfirmName = () => {
+        const name = (document.getElementById('v2NameInput')?.value || '').trim();
+        if (!name) return alert('请输入名字');
+        v2.playerName = name;
+        v2InitGame();
+    };
 
-        html += `</div>`;
-        app.innerHTML = html;
-
-        // 事件绑定
-        if (step === 0) {
-            document.getElementById('wizardStart')?.addEventListener('click', () => { step = 1; renderStep(); });
-        } else if (step === 1) {
-            document.querySelectorAll('.dept-btn').forEach(b => {
-                b.addEventListener('click', () => {
-                    v2.deptType = b.dataset.dept;
-                    document.querySelectorAll('.dept-btn').forEach(x => x.style.borderColor = '');
-                    b.style.borderColor = '#f5cd79';
-                });
-            });
-            document.getElementById('wizardNext')?.addEventListener('click', () => {
-                if (!v2.deptType) return alert('请选择一个院系');
-                step = 2; renderStep();
-            });
-        } else if (step === 2) {
-            document.querySelectorAll('.cur-btn').forEach(b => {
-                b.addEventListener('click', () => {
-                    v2.curriculum = b.dataset.cur;
-                    document.querySelectorAll('.cur-btn').forEach(x => x.style.borderColor = '');
-                    b.style.borderColor = '#f5cd79';
-                });
-            });
-            document.getElementById('wizardNext')?.addEventListener('click', () => {
-                if (!v2.curriculum) return alert('请选择一个培养定位');
-                step = 3; renderStep();
-            });
-        } else if (step === 3) {
-            document.querySelectorAll('.diff-btn').forEach(b => {
-                b.addEventListener('click', () => {
-                    v2.difficulty = b.dataset.diff;
-                    document.querySelectorAll('.diff-btn').forEach(x => x.style.borderColor = '');
-                    b.style.borderColor = '#f5cd79';
-                });
-            });
-            document.getElementById('wizardNext')?.addEventListener('click', () => {
-                if (!v2.difficulty) return alert('请选择难度');
-                step = 4; renderStep();
-            });
-        } else if (step === 4) {
-            document.getElementById('finishSetup')?.addEventListener('click', () => {
-                const name = document.getElementById('nameInput')?.value.trim() || '院长';
-                v2.playerName = name;
-                v2InitGame();
-            });
-        }
-
-        if (document.getElementById('wizardBack')) {
-            document.getElementById('wizardBack').addEventListener('click', () => { if (step > 0) { step--; renderStep(); } });
-        }
-    }
-
-    renderStep();
+    // 按步骤执行
+    if (steps[step]) steps[step]();
+    else v2InitGame();
 }
 
 // ========== 游戏初始化 ==========
 function v2InitGame() {
-    const dept = DEPT_CONFIG[v2.deptType];
-    const diff = DIFFICULTY_PRESETS[v2.difficulty] || DIFFICULTY_PRESETS.normal;
+    const defaults = v2DefaultState();
+    // 保留用户选择
+    const playerName = v2.playerName;
+    const deptType = v2.deptType;
+    const curriculum = v2.curriculum;
+    const difficulty = v2.difficulty;
 
-    // 初始数值
-    const init = { funds: 30, academicRep: 30, adminRep: 30, morale: 30, studentEval: 30 };
-    Object.keys(init).forEach(k => v2[k] = init[k]);
+    Object.assign(v2, JSON.parse(JSON.stringify(defaults)));
+    v2.playerName = playerName;
+    v2.deptType = deptType;
+    v2.curriculum = curriculum;
+    v2.difficulty = difficulty;
 
-    // 院系修正
-    if (dept) {
-        Object.entries(dept.init).forEach(([k, v]) => {
-            if (v2[k] !== undefined) v2[k] += v;
-        });
-    }
-    // 难度修正
-    if (diff && diff.init) {
-        Object.entries(diff.init).forEach(([k, v]) => {
-            if (v2[k] !== undefined) v2[k] += v;
-        });
-    }
-    v2UpdateStats();
-    v2.availableDays = v2CalcAvailableDays();
+    // 应用院系修正
+    const dept = DEPT_CONFIG[deptType];
+    if (dept && dept.init) v2ApplyEffect(dept.init);
 
-    // 初始化关系
+    // 应用难度修正
+    const diff = DIFFICULTY_PRESETS[difficulty];
+    if (diff && diff.init) v2ApplyEffect(diff.init);
+
+    // 初始关系
     v2.relations = JSON.parse(JSON.stringify(INITIAL_RELATION));
-    v2InitStaff();
 
-    // 初始化装饰
-    v2.officeDecors = [];
+    // 生成下属
+    v2.staff = STAFF_TEMPLATES.map(t => {
+        const pool = STAFF_PERSONA_POOL[t.id] || [];
+        const persona = v2Pick(pool) || {};
+        return {
+            id: t.id,
+            title: t.title,
+            name: persona.name || '未命名',
+            trait: persona.trait || '普通',
+            ability: persona.ability || (30 + Math.floor(Math.random() * 40)),
+            loyalty: persona.loyalty || (20 + Math.floor(Math.random() * 30)),
+            profile: persona.profile || '一位下属。',
+            quest: persona.quest || null,
+            flaw: persona.flaw || null
+        };
+    });
 
-    v2SaveGame('auto');
+    // 初始消息
+    const deptName = DEPT_CONFIG[deptType]?.name || '未知院系';
+    v2PushMail(`📋 欢迎到任！你已就任${deptName}院长。`);
+    v2PushMail('📌 提示：每月至少排1项日常+1项重点方可执行月度。');
+
+    v2.availableDays = v2CalcAvailableDays();
+    v2UpdateStats();
     v2RenderPlaying();
 }
 
 // ========== 主游戏渲染 ==========
 function v2RenderPlaying() {
     const app = document.getElementById('app');
-    app.classList.remove('page-transition-in');
-    void app.offsetWidth;
-    app.classList.add('page-transition-in');
+    const dept = DEPT_CONFIG[v2.deptType] || {};
+    const remaining = v2.availableDays - v2.usedDays;
+    const queueDays = v2.actionQueue.reduce((s, t) => s + t.days, 0);
+    const canExec = v2.actionQueue.filter(t => t.type === 'daily').length >= 1 &&
+                    v2.actionQueue.filter(t => t.type === 'focus').length >= 1 && !v2.currentEvent;
 
-    if (v2.executionMode) return; // 不要覆盖执行UI
-
-    const dept = DEPT_CONFIG[v2.deptType];
-    const meta = v2MetaLoad();
-
-    // 学期计算
-    const term = Math.floor(v2.totalMonth / 3) + 1;
-    const monthInTerm = (v2.totalMonth % 3) + 1;
-
-    let html = `<div class="top-bar">
-        <span class="term-badge">第 ${term} 学期 · 第 ${monthInTerm} 月</span>
-        <span style="font-size:0.82em;color:#8fa8b8;">${dept?.icon || '🏫'} ${dept?.name || ''} · ${v2.playerName}</span>
-        <span class="top-link-btn" onclick="v2ToggleStaff()">👥 管理层</span>
-        ${v2.titles.length ? v2.titles.map(t => `<span class="title-chip">${t.name}</span>`).join('') : ''}
-        <span class="top-link-btn" onclick="v2ShowAchievements()">🏆 ${meta.points||0}</span>
-    </div>
-    <div class="stat-grid">
-        <div class="stat-item"><span class="stat-name">💰经费</span><span class="stat-val" id="sv_funds">${v2.funds}</span></div>
-        <div class="stat-item"><span class="stat-name">📚学术</span><span class="stat-val" id="sv_academicRep">${v2.academicRep}</span></div>
-        <div class="stat-item"><span class="stat-name">🏛️行政</span><span class="stat-val" id="sv_adminRep">${v2.adminRep}</span></div>
-        <div class="stat-item"><span class="stat-name">😊士气</span><span class="stat-val" id="sv_morale">${v2.morale}</span></div>
-        <div class="stat-item"><span class="stat-name">🎓学生</span><span class="stat-val" id="sv_studentEval">${v2.studentEval}</span></div>
-    </div>
-    <div class="schedule-bar">📅 可用天数：${v2.availableDays - v2.usedDays}/${v2.availableDays}  |  ⚡ 已排期：${v2.actionQueue.length} 项</div>
-    <div id="v2StaffPanel" class="staff-panel"></div>
-    <div id="v2ActionArea"></div>
-    <div id="v2MessageBoard" class="message-board"></div>
-    <div id="v2ToastHost"></div>
-    <div style="margin-top:10px;">
-        <button class="btn secondary" onclick="v2ShowMenu()" style="text-align:center;">⚙️ 菜单（存档/读档）</button>
+    app.innerHTML = `<div class="play-container page-transition-in">
+        <div class="play-header">
+            <div><span style="font-size:1.1em;">${dept.icon || ''} ${dept.name || ''} · ${v2.playerName}</span>
+            <span style="color:#8fa8b8;font-size:0.78em;margin-left:8px;">第${v2.semester}学期 第${v2.month}月</span>
+            <span style="color:#7f9aab;font-size:0.78em;margin-left:6px;">(总月${v2.totalMonth})</span></div>
+            <div style="display:flex;gap:6px;">
+                <button class="btn small" onclick="v2ShowMenu()" style="font-size:0.78em;">☰ 菜单</button>
+                <button class="btn small" onclick="v2ShowAchievements()" style="font-size:0.78em;">🏆 成就</button>
+            </div>
+        </div>
+        <div class="play-stats" id="v2PlayStats">
+            <div class="stat-item"><span class="stat-name">💰经费</span><span class="stat-val" id="v2StatFunds">${v2.funds}</span></div>
+            <div class="stat-item"><span class="stat-name">📚学术</span><span class="stat-val" id="v2StatAcademic">${v2.academicRep}</span></div>
+            <div class="stat-item"><span class="stat-name">🏛️行政</span><span class="stat-val" id="v2StatAdmin">${v2.adminRep}</span></div>
+            <div class="stat-item"><span class="stat-name">😊士气</span><span class="stat-val" id="v2StatMorale">${v2.morale}</span></div>
+            <div class="stat-item"><span class="stat-name">🎓学生</span><span class="stat-val" id="v2StatStudent">${v2.studentEval}</span></div>
+        </div>
+        <div class="play-info-bar">
+            <span>⏳ 本月可用 <strong>${remaining}</strong> 天 | 已排程 <strong>${queueDays}</strong> 天 | 精力 <strong>${v2.energy}</strong>%</span>
+        </div>
+        <div class="play-body">
+            <div class="play-left">
+                <div id="v2ActionArea"></div>
+            </div>
+            <div class="play-right">
+                <div class="staff-panel" id="v2StaffPanel">
+                    <div style="color:#7f9aab;font-size:0.82em;">合上管理层面板以查看更多行动</div>
+                </div>
+                <div class="msg-board" id="v2MessageBoard"></div>
+            </div>
+        </div>
     </div>`;
 
-    app.innerHTML = html;
+    // 进度条
+    const progressPercent = remaining <= 0 ? 100 : Math.round((queueDays / (queueDays + remaining)) * 100);
+    const progressBar = document.createElement('div');
+    progressBar.style.cssText = `height:3px;background:#1e2b3c;margin:2px 10px;border-radius:2px;`;
+    progressBar.innerHTML = `<div style="width:${Math.min(progressPercent, 100)}%;height:100%;background:linear-gradient(90deg,#4a9eff,#6bc9ff);border-radius:2px;transition:width 0.3s;"></div>`;
+    document.querySelector('.play-info-bar')?.after(progressBar);
 
-    // 渲染已排任务
     v2RenderQueue();
-    v2RenderActionTabs();
-    v2RenderMessages();
     v2RenderStaffPanel();
-}
-
-// ========== 菜单系统 ==========
-function v2ShowMenu() {
-    const app = document.getElementById('app');
-    app.innerHTML = `<div class="page-transition-in" style="max-width:500px;margin:auto;">
-        <h2>⚙️ 菜单</h2>
-        <button class="btn" onclick="v2SaveGame(1)">💾 存档位 1${v2HasSave(1) ? ' (已有存档)' : ''}</button>
-        <button class="btn" onclick="if(v2HasSave(1)&&confirm('读取存档1？')) v2LoadGame(1)">📂 读档位 1</button>
-        <button class="btn" onclick="v2SaveGame(2)">💾 存档位 2${v2HasSave(2) ? ' (已有存档)' : ''}</button>
-        <button class="btn" onclick="if(v2HasSave(2)&&confirm('读取存档2？')) v2LoadGame(2)">📂 读档位 2</button>
-        <button class="btn" onclick="v2SaveGame(3)">💾 存档位 3${v2HasSave(3) ? ' (已有存档)' : ''}</button>
-        <button class="btn" onclick="if(v2HasSave(3)&&confirm('读取存档3？')) v2LoadGame(3)">📂 读档位 3</button>
-        <button class="btn warning" onclick="if(confirm('确认重新开始？')) v2RenderSetup()" style="text-align:center;">🔄 重新开始</button>
-        <button class="btn secondary" onclick="v2RenderPlaying()" style="text-align:center;">◀ 返回</button>
-    </div>`;
-}
-
-function v2ShowAchievements() {
-    const meta = v2MetaLoad();
-    const app = document.getElementById('app');
-    let html = `<div class="page-transition-in"><h2>🏆 成就</h2><div style="color:#8fa8b8;font-size:0.88em;">周目点数：${meta.points || 0} | 总运行：${meta.totalRuns || 0}</div>`;
-    ACHIEVEMENTS.forEach(a => {
-        const unlocked = meta.ach && meta.ach.includes(a.id);
-        html += `<div style="background:#1e2b3c;margin:8px 0;padding:10px;border:2px solid ${unlocked?'#d4a017':'#3d5166'};border-radius:2px;">
-            <span style="color:${unlocked?'#f5cd79':'#7f9aab'};">${unlocked?'✓':'○'} ${a.name}</span>
-            <span style="font-size:0.8em;color:#b0cec4;display:block;">${a.desc} (${a.points}pt)</span>
-        </div>`;
-    });
-    html += `<button class="btn secondary" onclick="v2RenderPlaying()" style="text-align:center;">◀ 返回</button></div>`;
-    app.innerHTML = html;
+    v2RenderMessages();
 }
 
 // ========== 任务队列 ==========
@@ -492,22 +384,23 @@ function v2RenderActionTabs() {
     const focusProjects = eventsData.focusProjects || [];
 
     let html = `<div class="play-tabs">
-        <button class="btn" onclick="v2ShowActionTab('daily')">📋 日常事务</button>
-        <button class="btn" onclick="v2ShowActionTab('focus')">🎯 重点项目</button>
-        <button class="btn" onclick="v2ShowActionTab('staff')">👥 下属互动</button>
+        <button class="btn ${v2._activeTab === 'daily' ? 'tab-active' : ''}" onclick="v2ShowActionTab('daily')">📋 日常事务</button>
+        <button class="btn ${v2._activeTab === 'focus' ? 'tab-active' : ''}" onclick="v2ShowActionTab('focus')">🎯 重点项目</button>
+        <button class="btn ${v2._activeTab === 'staff' ? 'tab-active' : ''}" onclick="v2ShowActionTab('staff')">👥 下属互动</button>
     </div>
     <div id="v2ActionTabContent"></div>
-    <div class="hint-line">💡 每月需要至少排1项日常+1项重点。主事件处理完毕后可执行月度。</div>
+    <div class="hint-line">💡 每月需要至少排1项日常+1项重点。</div>
     <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn" id="v2ExecBtn" onclick="v2ExecuteMonth()" ${v2.actionQueue.filter(t=>t.type==='daily').length===0||v2.actionQueue.filter(t=>t.type==='focus').length===0?'disabled':''}>▶ 执行本月排程</button>
         <button class="btn warning" onclick="v2EndTerm()" style="text-align:center;">⏭ 跳过剩余天数结束本月</button>
     </div>`;
 
     tabContainer.innerHTML = html;
-    v2ShowActionTab('daily');
+    v2ShowActionTab(v2._activeTab);
 }
 
 function v2ShowActionTab(tab) {
+    v2._activeTab = tab;
     const container = document.getElementById('v2ActionTabContent');
     if (!container) return;
     const eventsData = createEventData();
@@ -558,7 +451,63 @@ function v2AddAction(type, id, title, days, effect) {
     const totalDays = v2.actionQueue.reduce((s, t) => s + t.days, 0) + days;
     if (totalDays > remaining) return alert(`剩余天数不足（还剩${remaining}天，需要${days}天）`);
     v2.actionQueue.push({ type, id, title, days, effect });
-    v2RenderPlaying();
+    // 只更新排程队列而不是全量 re-render，防止闪烁
+    const area = document.getElementById('v2ActionArea');
+    if (area) {
+        // 重新渲染排程队列（保留 Tab）
+        v2RenderQueueOnly(area);
+    } else {
+        v2RenderPlaying();
+    }
+}
+
+// 排程队列增量更新（不重新渲染整个页面，避免 flicker）
+function v2RenderQueueOnly(area) {
+    // 更新队列显示
+    const queueContainer = area.querySelector('.schedule-queue') || area;
+    let html = `<div class="schedule-queue">`;
+    if (v2.actionQueue.length === 0) {
+        html += `<div class="queue-empty">暂无排程。选择下面的行动后自动加入。</div>`;
+    } else {
+        v2.actionQueue.forEach((t, i) => {
+            const label = t.type === 'daily' ? '📋' : t.type === 'focus' ? '🎯' : '⚡';
+            html += `<div class="queue-item"><span>${label} ${t.title}</span>
+                <span style="display:flex;gap:6px;"><span style="color:#8fa8b8;">${t.days}天</span>
+                <span style="color:#e74c3c;cursor:pointer;" onclick="v2RemoveQueueItem(${i})">✕</span></span></div>`;
+        });
+    }
+    html += `</div>`;
+
+    // 保留 Tab 区域，只替换队列部分
+    const existingTabs = area.querySelector('#v2ActionTabs');
+    if (existingTabs) {
+        // 替换队列 HTML
+        const queueDiv = document.createElement('div');
+        queueDiv.innerHTML = html + '<div id="v2ActionTabs"></div>';
+        const newQueue = queueDiv.querySelector('.schedule-queue');
+        const oldQueue = area.querySelector('.schedule-queue');
+        if (newQueue && oldQueue) {
+            oldQueue.replaceWith(newQueue);
+        } else if (newQueue) {
+            existingTabs.before(queueDiv.querySelector('.schedule-queue'));
+        }
+    }
+
+    // 更新执行按钮状态
+    const execBtn = document.getElementById('v2ExecBtn');
+    if (execBtn) {
+        const hasDaily = v2.actionQueue.filter(t => t.type === 'daily').length >= 1;
+        const hasFocus = v2.actionQueue.filter(t => t.type === 'focus').length >= 1;
+        execBtn.disabled = !(hasDaily && hasFocus && !v2.currentEvent);
+    }
+
+    // 更新信息栏的排程天数
+    const infoBar = document.querySelector('.play-info-bar');
+    if (infoBar) {
+        const remaining = v2.availableDays - v2.usedDays;
+        const queueDays = v2.actionQueue.reduce((s, t) => s + t.days, 0);
+        infoBar.innerHTML = `<span>⏳ 本月可用 <strong>${remaining}</strong> 天 | 已排程 <strong>${queueDays}</strong> 天 | 精力 <strong>${v2.energy}</strong>%</span>`;
+    }
 }
 
 // ========== 下属互动 ==========
@@ -626,17 +575,16 @@ function v2RenderMessages() {
 }
 
 // ========== 月度排程执行 ==========
-// ===== v2 execution functions (extracted from game_exec_only.js) =====
 let v2ExecAutoTimer = null;
 
 function v2ExecuteMonth() {
     const dailyCount = v2.actionQueue.filter(x => x.type === 'daily').length;
     const focusCount = v2.actionQueue.filter(x => x.type === 'focus').length;
     if (!dailyCount || !focusCount || v2.currentEvent) return alert('请先处理主事件，并排至少1项日常+1项重点。');
-    
+
     const appV2 = document.getElementById('app');
     appV2.classList.add('page-transition-out');
-    
+
     setTimeout(() => {
         const queueSnap = v2.actionQueue.map(t => ({ ...t }));
         v2.pendingExecutionQueue = queueSnap;
@@ -685,10 +633,13 @@ function v2ExecShowStatToast(name, oldVal, newVal) {
 function v2RenderExecution() {
     if (v2.typingTimer) { clearInterval(v2.typingTimer); v2.typingTimer = null; }
     if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
-    
+
     const appV2 = document.getElementById('app');
     const dept = DEPT_CONFIG[v2.deptType];
-    
+
+    // 修复黑屏：先移除 page-transition-out，避免页面保持隐藏
+    appV2.classList.remove('page-transition-out');
+
     v2._execStatSnapshot = {
         funds: v2.funds,
         academicRep: v2.academicRep,
@@ -696,7 +647,7 @@ function v2RenderExecution() {
         morale: v2.morale,
         studentEval: v2.studentEval
     };
-    
+
     appV2.innerHTML = `<div class="exec-stage page-transition-in" id="v2ExecStage">
         <div class="exec-stage-header">
             <h2>${dept.icon} ${dept.name} · ${v2.playerName}</h2>
@@ -721,11 +672,11 @@ function v2RenderExecution() {
             <span class="exec-auto-label" style="display:none" id="v2ExecAutoLabel">即将自动继续…</span>
         </div>
     </div>`;
-    
+
     const tasks = [...v2.pendingExecutionQueue];
     const dailyTasks = tasks.filter(t => t.type === 'daily');
     const focusTasks = tasks.filter(t => t.type === 'focus');
-    
+
     const timeline = [];
     const openingPool = [
         '本月工作正式启动。走廊里已有人在等你的签字。',
@@ -734,11 +685,11 @@ function v2RenderExecution() {
         '清晨的阳光透过百叶窗洒在办公桌上。又一个忙碌的月份开始了。'
     ];
     timeline.push({ type: 'narration', text: v2Pick(openingPool) });
-    
+
     let taskGroups = [];
     taskGroups = taskGroups.concat(dailyTasks);
     taskGroups = taskGroups.concat(focusTasks);
-    
+
     taskGroups.forEach((task, idx) => {
         timeline.push({ type: 'task', task });
         if (idx < taskGroups.length - 1) {
@@ -749,25 +700,25 @@ function v2RenderExecution() {
             }
         }
     });
-    
+
     if (v2.executionPendingPersonal) {
         timeline.push({ type: 'personalStory' });
     }
-    
+
     const closingPool = [
         '所有排程任务执行完毕。你长舒一口气，靠在椅背上。窗外天色已暗。',
         '今天的工作告一段落。你整理了一下桌面，关掉了显示器。',
         '最后一个任务完成时，办公室里已经只剩下你一个人了。'
     ];
     timeline.push({ type: 'narration', text: v2Pick(closingPool) });
-    
+
     if (v2.funds < 15) {
         timeline.push({ type: 'narration', text: '财务处的邮件还在收件箱里闪烁——经费确实吃紧了。' });
     }
-    
+
     v2.executionTimeline = timeline;
     v2.executionStep = 0;
-    
+
     v2RenderExecProgress();
     setTimeout(() => v2ExecNextStep(), 400);
 }
@@ -802,16 +753,16 @@ function v2UpdateExecProgress() {
 
 function v2ExecNextStep() {
     if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
-    
+
     if (v2.executionRandomEvents && v2.executionRandomEvents.length > 0 && Math.random() < 0.15) {
         const ev = v2.executionRandomEvents.shift();
         if (ev) return v2ExecShowIndependentEvent(ev);
     }
-    
+
     if (v2.executionStep >= v2.executionTimeline.length) {
         return v2ExecFinish();
     }
-    
+
     const step = v2.executionTimeline[v2.executionStep];
     const narrEl = document.getElementById('v2ExecNarr');
     const stagePane = document.getElementById('v2ExecStagePane');
@@ -819,17 +770,17 @@ function v2ExecNextStep() {
     const skipBtn = document.getElementById('v2ExecSkipText');
     const actions = document.getElementById('v2ExecActions');
     if (!narrEl || !stagePane) return;
-    
+
     v2.executionStep++;
     v2UpdateExecProgress();
-    
+
     stagePane.className = 'exec-content-stage slide-up-in';
     stagePane.innerHTML = '';
     if (nextBtn) nextBtn.style.display = 'none';
     if (skipBtn) skipBtn.style.display = 'none';
     const autoLabel = document.getElementById('v2ExecAutoLabel');
     if (autoLabel) autoLabel.style.display = 'none';
-    
+
     if (step.type === 'narration') {
         stagePane.innerHTML = `<div class="exec-narr exec-typewriter-cursor" id="v2ExecNarrActive"></div>`;
         const activeEl = document.getElementById('v2ExecNarrActive');
@@ -861,19 +812,19 @@ function v2ExecNextStep() {
         const task = step.task;
         const feedback = v2ResolveTask(task);
         v2.executionLogs.push(feedback);
-        
+
         const oldStats = { ...v2._execStatSnapshot };
-        
+
         const taskTypeLabel = task.type === 'daily' ? '📋 日常' : '🎯 重点';
         stagePane.innerHTML = `<div class="exec-task-title">${taskTypeLabel} · ${task.title}</div>
             <div class="exec-narr exec-typewriter-cursor" id="v2ExecTaskActive"></div>`;
-        
+
         v2UpdateStats();
         v2ExecRefreshStatValues(oldStats);
-        
+
         if (nextBtn) nextBtn.style.display = 'none';
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        
+
         const activeEl = document.getElementById('v2ExecTaskActive');
         if (activeEl) {
             v2Typewriter(feedback, 'v2ExecTaskActive', 'v2ExecSkipText', () => {
@@ -882,7 +833,7 @@ function v2ExecNextStep() {
                 if (autoLabel) autoLabel.style.display = 'block';
             });
         }
-        
+
         nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'personalStory') {
         stagePane.classList.add('highlight-personal');
@@ -898,12 +849,12 @@ function v2ExecNextStep() {
         const story = v2Pick(stories);
         v2.flags.termPersonalStoryUsed = true;
         v2.executionLogs.push(story.feedback);
-        
+
         const oldStats = { ...v2._execStatSnapshot };
         v2ApplyEffect(story.effect);
         v2UpdateStats();
         v2ExecRefreshStatValues(oldStats);
-        
+
         stagePane.innerHTML = `<h3>🎭 个人插曲：${story.title}</h3>
             <div class="exec-narr exec-typewriter-cursor" id="v2ExecPersonalActive"></div>`;
         const activeEl = document.getElementById('v2ExecPersonalActive');
@@ -925,7 +876,7 @@ function v2ExecShowIndependentEvent(ev) {
     if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
     const autoLabel = document.getElementById('v2ExecAutoLabel');
     if (autoLabel) autoLabel.style.display = 'none';
-    
+
     const popup = document.createElement('div');
     popup.className = 'exec-event-popup';
     popup.id = 'v2ExecEventPopup';
@@ -937,9 +888,9 @@ function v2ExecShowIndependentEvent(ev) {
         </div>
     </div>`;
     document.body.appendChild(popup);
-    
+
     const oldStats = { ...v2._execStatSnapshot };
-    
+
     popup.querySelectorAll('[data-choice]').forEach(b => {
         b.onclick = () => {
             const idx = Number(b.dataset.choice);
@@ -948,7 +899,7 @@ function v2ExecShowIndependentEvent(ev) {
             v2ApplyEffect(choice.effect ? choice.effect : (choice.effects || {}));
             v2UpdateStats();
             v2ExecRefreshStatValues(oldStats);
-            
+
             popup.remove();
             if (nextBtn) nextBtn.style.display = 'inline-block';
             nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
@@ -964,7 +915,7 @@ function v2ExecRefreshStatValues(oldStats) {
         morale: v2.morale,
         studentEval: v2.studentEval
     };
-    
+
     const statVals = document.querySelectorAll('#v2ExecStats .stat-val');
     statVals.forEach(el => {
         const statKey = el.dataset.stat;
@@ -975,7 +926,7 @@ function v2ExecRefreshStatValues(oldStats) {
             v2ExecShowStatToast(statKey, oldVal, newVal);
         }
     });
-    
+
     v2._execStatSnapshot = newStats;
 }
 
@@ -985,7 +936,7 @@ function v2ExecFinish() {
     const queueSnap = v2.pendingExecutionQueue;
     const meta = v2MetaLoad();
     meta.ach = meta.ach || [];
-    
+
     if (fundsBefore < 10 && queueSnap && queueSnap.some(t => t.type === 'focus')) {
         if (!meta.ach.includes('low_fund_meeting')) {
             const a = ACHIEVEMENTS.find(x => x.id === 'low_fund_meeting');
@@ -1008,28 +959,28 @@ function v2ExecFinish() {
     else v2.admissionStreak = 0;
     v2.prevEval = v2.studentEval;
     v2.carryoverDays = Math.max(0, v2.usedDays - v2.availableDays);
-    
+
     // 进度到下个月
     v2.totalMonth += 1;
     v2.month = (v2.totalMonth % 3) + 1;
     v2.flags.termPersonalStoryUsed = false;
-    
+
     // 检查学期结束弧线
     const newTerm = Math.floor(v2.totalMonth / 3) + 1;
     if (newTerm > v2.semester) {
         v2.semester = newTerm;
         // 学期过渡回顾
     }
-    
+
     // 重置月度资源
     v2.energy = 100;
     v2.usedDays = 0;
     v2.actionQueue = [];
     v2.availableDays = v2CalcAvailableDays();
-    
+
     // 结算过渡效率修正
     const prevLogs = v2.executionLogs || [];
-    
+
     // 清理执行状态
     v2.pendingExecutionQueue = null;
     v2.executionTimeline = null;
@@ -1037,15 +988,14 @@ function v2ExecFinish() {
     v2.executionRandomEvents = null;
     v2.executionPendingEvent = null;
     v2.executionMode = false;
-    v2.executionQueue = null;
     v2.currentEvent = null;
     v2.currentEventResolved = false;
     v2.termEndShown = false;
-    
+
     // 检测学期结束
     v2CheckEndings();
     if (v2.gameOver) return;
-    
+
     // 执行阶段UI滑出
     const execStage = document.getElementById('v2ExecStage');
     if (execStage) {
@@ -1078,7 +1028,7 @@ function v2AbortExecution() {
 function v2ResolveTask(task) {
     v2ApplyEffect(task.effect);
     v2PushMail(`✅ 完成：${task.title}`);
-    
+
     const feedbackPool = {
         'leave': [
             '你协调了几位教师的课时，排班表终于完整了。教师们松了口气。',
@@ -1117,9 +1067,11 @@ function v2ResolveTask(task) {
             '你注意到在烧烤炉边，平时不太说话的两位年轻老师居然聊得很投缘。'
         ]
     };
-    
+
     const pool = feedbackPool[task.id] || feedbackPool.leave;
-    return v2Pick(pool);
+    const feedback = v2Pick(pool);
+
+    return feedback;
 }
 
 // ========== 跳过结束本月 ==========
@@ -1127,12 +1079,12 @@ function v2EndTerm() {
     const passive = CURRICULUM_PASSIVE[v2.curriculum] || CURRICULUM_PASSIVE.balanced;
     v2ApplyEffect(passive);
     v2UpdateStats();
-    
+
     v2.totalMonth += 1;
     v2.month = (v2.totalMonth % 3) + 1;
     const newTerm = Math.floor(v2.totalMonth / 3) + 1;
     if (newTerm > v2.semester) v2.semester = newTerm;
-    
+
     v2.flags.termPersonalStoryUsed = false;
     v2.energy = 100;
     v2.usedDays = 0;
@@ -1140,10 +1092,10 @@ function v2EndTerm() {
     v2.availableDays = v2CalcAvailableDays();
     v2.currentEvent = null;
     v2.currentEventResolved = false;
-    
+
     v2CheckEndings();
     if (v2.gameOver) return;
-    
+
     v2PushMail(`⏭️ 跳过剩余天数进入第 ${newTerm} 学期第 ${v2.month} 月`);
     v2RenderPlaying();
 }
@@ -1151,7 +1103,7 @@ function v2EndTerm() {
 // ========== 月度回顾 ==========
 function v2ShowMonthRecap(logs) {
     const stats = { funds: v2.funds, academicRep: v2.academicRep, adminRep: v2.adminRep, morale: v2.morale, studentEval: v2.studentEval };
-    
+
     // 学期末（第3个月）叙事
     const isTermEnd = v2.month === 1; // 刚过完三个月，重新从1开始
     let termNarrative = '';
@@ -1159,10 +1111,10 @@ function v2ShowMonthRecap(logs) {
         const prevStats = { funds: v2.funds - 5, reputation: v2.academicRep - 3, morale: v2.morale - 2, studentEval: v2.studentEval - 2 };
         termNarrative = buildTermEndNarrative(v2.semester - 1, stats, prevStats);
     }
-    
+
     const app = document.getElementById('app');
     let logHtml = logs && logs.length ? logs.slice(-5).map(l => `<div>• ${l}</div>`).join('') : '<div style="color:#7f9aab;">暂无详细记录</div>';
-    
+
     app.innerHTML = `<div class="recap-overlay page-transition-in">
         <div class="recap-panel slide-up-in">
             <h3>📊 月度结算 · 第 ${Math.floor(v2.totalMonth / 3) + 1} 学期 第 ${(v2.totalMonth % 3) + 1} 月</h3>
@@ -1218,14 +1170,14 @@ function v2EndWithMessage(msg, type) {
     v2.gameOver = true;
     v2.executionMode = false;
     if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
-    
+
     // 更新周目数据
     const meta = v2MetaLoad();
     meta.totalRuns = (meta.totalRuns || 0) + 1;
     const score = Math.floor(v2.academicRep + v2.adminRep + v2.morale + v2.studentEval + v2.funds);
     if (score > (meta.bestScore || 0)) meta.bestScore = score;
     v2MetaSave(meta);
-    
+
     const app = document.getElementById('app');
     app.innerHTML = `<div class="page-transition-in" style="max-width:600px;margin:auto;">
         <h2>${type === 'ending' ? '🎊 任期完结' : '💔 提前结束'}</h2>
@@ -1247,19 +1199,19 @@ function v2BuildEndSummary() {
     if (v2.academicRep >= 70) parts.push('学术声望在你任期内显著提升，多名教师获批国家级项目。');
     else if (v2.academicRep >= 40) parts.push('学术端保持平稳运行，没有大起大落。');
     else parts.push('学术端表现欠佳，几项重点项目未能如期推进。');
-    
+
     if (v2.studentEval >= 70) parts.push('学生对学院的管理高度认可，招生咨询量逐年上升。');
     else if (v2.studentEval >= 40) parts.push('学生评价一般，没有大的风波就是好消息。');
     else parts.push('学生满意度偏低，下学期继任者恐怕要面对不少遗留问题。');
-    
+
     if (v2.morale >= 70) parts.push('教师团队凝聚力强，不少人表示「这是近几年氛围最好的时期」。');
     else if (v2.morale >= 40) parts.push('教师士气起伏不大，但缺乏明显的正向激励。');
     else parts.push('教师流失率偏高，继任者需要优先稳定队伍。');
-    
+
     if (v2.funds >= 50) parts.push('财务稳健，离职时账户上留有可观的余额。');
     else if (v2.funds >= 0) parts.push('财务基本打平，没有留下烂摊子。');
     else parts.push('财务赤字节节攀升，新院长上任后的第一件事大概就是找钱。');
-    
+
     parts.push('\n感谢你完成了一届完整的院长任期。');
     return parts.join('\n');
 }
@@ -1268,13 +1220,13 @@ function v2BuildEndSummary() {
 function v2Typewriter(text, targetId, skipBtnId, onComplete) {
     const el = document.getElementById(targetId);
     if (!el) return;
-    
+
     let idx = 0;
     if (v2.typingTimer) { clearInterval(v2.typingTimer); }
-    
+
     el.textContent = '';
     const speed = 28;
-    
+
     function typeChar() {
         if (idx < text.length) {
             el.textContent += text[idx];
@@ -1285,7 +1237,7 @@ function v2Typewriter(text, targetId, skipBtnId, onComplete) {
             if (onComplete) onComplete();
         }
     }
-    
+
     // 绑定跳过按钮
     const skipBtn = document.getElementById(skipBtnId);
     if (skipBtn) {
@@ -1296,14 +1248,78 @@ function v2Typewriter(text, targetId, skipBtnId, onComplete) {
         };
         skipBtn.style.display = 'inline-block';
     }
-    
+
     typeChar();
+}
+
+// ========== 菜单 ==========
+function v2ShowMenu() {
+    const app = document.getElementById('app');
+    app.innerHTML = `<div class="page-transition-in" style="max-width:500px;margin:auto;">
+        <h2>☰ 菜单</h2>
+        <div style="margin:20px 0;">
+            <div style="color:#8fa8b8;font-size:0.82em;margin-bottom:8px;">📁 存档管理</div>
+            ${[1,2,3].map(i => `<button class="btn" onclick="v2SaveGame(${i})" style="text-align:center;width:100%;margin-bottom:4px;">保存到存档 ${i}</button>`).join('')}
+            ${[1,2,3].map(i => `<button class="btn secondary" onclick="v2LoadGame(${i})" style="text-align:center;width:100%;margin-bottom:4px;">读取存档 ${i}</button>`).join('')}
+            <button class="btn warning" onclick="v2RenderPlaying()" style="text-align:center;margin-top:8px;">◀ 返回游戏</button>
+            <button class="btn warning" onclick="if(confirm('确定重新开始？'))v2RenderSetup()" style="text-align:center;">🔄 重新开始</button>
+        </div>
+    </div>`;
+}
+
+// ========== 成就查看 ==========
+function v2ShowAchievements() {
+    const meta = v2MetaLoad();
+    const app = document.getElementById('app');
+    let html = `<div class="page-transition-in" style="max-width:500px;margin:auto;">
+        <h2>🏆 成就</h2>
+        <div style="margin:12px 0;color:#8fa8b8;font-size:0.88em;">周目点数：${meta.points || 0} | 最高分：${meta.bestScore || 0} | 总运行次数：${meta.totalRuns || 0}</div>`;
+    ACHIEVEMENTS.forEach(a => {
+        const unlocked = meta.ach && meta.ach.includes(a.id);
+        html += `<div style="background:#1e2b3c;margin:8px 0;padding:10px;border:2px solid ${unlocked?'#d4a017':'#3d5166'};border-radius:2px;">
+            <span style="color:${unlocked?'#f5cd79':'#7f9aab'};">${unlocked?'✓':'○'} ${a.name}</span>
+            <span style="font-size:0.8em;color:#b0cec4;display:block;">${a.desc} (${a.points}pt)</span>
+        </div>`;
+    });
+    html += `<button class="btn secondary" onclick="v2RenderPlaying()" style="text-align:center;">◀ 返回</button></div>`;
+    app.innerHTML = html;
+}
+
+// ========== 称号 ==========
+function v2UnlockTitles() {
+    TITLE_RULES.forEach(rule => {
+        if (!v2.titles.includes(rule.id) && rule.cond(v2)) {
+            v2.titles.push(rule.id);
+            v2PushMail(`🏅 获得称号：${rule.name}`);
+        }
+    });
+}
+
+function v2CheckAchievements() {
+    const meta = v2MetaLoad();
+    meta.ach = meta.ach || [];
+    ACHIEVEMENTS.forEach(a => {
+        if (!meta.ach.includes(a.id) && a.cond && a.cond(v2, meta)) {
+            meta.ach.push(a.id);
+            meta.points = (meta.points || 0) + a.points;
+            v2PushMail(`🏆 成就解锁：${a.name}（+${a.points}点）`);
+        }
+    });
+    v2MetaSave(meta);
+}
+
+function v2QueueAchievementToast(name, points) {
+    const toast = document.createElement('div');
+    toast.className = 'ach-toast';
+    toast.innerHTML = `🏆 ${name} +${points}pt`;
+    toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#1e2b3c;border:2px solid #d4a017;padding:12px 18px;border-radius:4px;color:#f5cd79;font-weight:bold;z-index:9999;animation:slideUpIn 0.4s ease both;';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
 }
 
 // ========== 暴露全局接口 ==========
 window.v2RenderSetup = v2RenderSetup;
 window.v2RenderPlaying = v2RenderPlaying;
-window.v2RenderGameOver = v2GameOverRender;
 window.v2ToggleStaff = v2ToggleStaff;
 window.v2ShowMenu = v2ShowMenu;
 window.v2ShowAchievements = v2ShowAchievements;
@@ -1336,8 +1352,3 @@ document.addEventListener('DOMContentLoaded', () => {
         v2RenderSetup();
     }
 });
-
-// ===== 兼容旧版 API =====
-function v2GameOverRender() {
-    // 已弃用，使用v2EndWithMessage替代
-}
