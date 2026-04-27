@@ -34,7 +34,7 @@ function v2DefaultState() {
         totalMonth: 0,
 
         usedDays: 0,
-        availableDays: 28 + 2,
+        availableDays: 28,
         carryoverDays: 0,
         energy: 100,
 
@@ -300,8 +300,8 @@ function v2InitGame() {
 function v2RenderPlaying() {
     const app = document.getElementById('app');
     const dept = DEPT_CONFIG[v2.deptType] || {};
-    const remaining = v2.availableDays - v2.usedDays;
     const queueDays = v2.actionQueue.reduce((s, t) => s + t.days, 0);
+    const remaining = v2.availableDays - v2.usedDays - queueDays;
     const canExec = v2.actionQueue.filter(t => t.type === 'daily').length >= 1 &&
                     v2.actionQueue.filter(t => t.type === 'focus').length >= 1 && !v2.currentEvent;
 
@@ -504,8 +504,8 @@ function v2RenderQueueOnly(area) {
     // 更新信息栏的排程天数
     const infoBar = document.querySelector('.play-info-bar');
     if (infoBar) {
-        const remaining = v2.availableDays - v2.usedDays;
         const queueDays = v2.actionQueue.reduce((s, t) => s + t.days, 0);
+        const remaining = v2.availableDays - v2.usedDays - queueDays;
         infoBar.innerHTML = `<span>⏳ 本月可用 <strong>${remaining}</strong> 天 | 已排程 <strong>${queueDays}</strong> 天 | 精力 <strong>${v2.energy}</strong>%</span>`;
     }
 }
