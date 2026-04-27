@@ -157,19 +157,22 @@ function v2MetaSave(meta) {
 }
 
 // ========== 开局向导 ==========
+let _wizardStep = 0;
+
 function v2RenderSetup() {
     v2.gameOver = false;
     const app = document.getElementById('app');
-    let step = 0; // 向导步骤
+    const step = _wizardStep;
 
     const steps = [
         // step 0: 开场叙事
         () => {
             const bg = BACKGROUND_POOL.age[Math.floor(Math.random() * BACKGROUND_POOL.age.length)];
+            const ageText = bg.tag + "（" + bg.value + "岁）";
             app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
                 <h2>🏫 院长模拟器</h2>
-                <div class="story-box typing-active">${bg}</div>
-                <button class="btn" onclick="v2RenderSetup()" style="margin-top:12px;">开始 →</button>
+                <div class="story-box typing-active">你是一名${ageText}的高校院系负责人。每一个决策，都将影响整个学院的命运。</div>
+                <button class="btn" onclick="_wizardStep=1;v2RenderSetup()" style="margin-top:12px;">开始 →</button>
             </div>`;
         },
         // step 1: 选择院系
@@ -228,13 +231,14 @@ function v2RenderSetup() {
         }
     ];
 
-    window.v2SelectDept = (dept) => { v2.deptType = dept; step = 2; v2RenderSetup(); };
-    window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; step = 3; v2RenderSetup(); };
-    window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; step = 4; v2RenderSetup(); };
+    window.v2SelectDept = (dept) => { v2.deptType = dept; _wizardStep = 2; v2RenderSetup(); };
+    window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; _wizardStep = 3; v2RenderSetup(); };
+    window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; _wizardStep = 4; v2RenderSetup(); };
     window.v2ConfirmName = () => {
         const name = (document.getElementById('v2NameInput')?.value || '').trim();
         if (!name) return alert('请输入名字');
         v2.playerName = name;
+        _wizardStep = 0;
         v2InitGame();
     };
 
@@ -327,7 +331,10 @@ function v2RenderPlaying() {
         </div>
         <div class="play-body">
             <div class="play-left">
-                <div id="v2ActionArea"></div>
+                <div id="v2ActionArea">
+                    <div id="v2ActionTabs"></div>
+                    <div id="v2ActionTabContent"></div>
+                </div>
             </div>
             <div class="play-right">
                 <div class="staff-panel" id="v2StaffPanel">
@@ -346,6 +353,7 @@ function v2RenderPlaying() {
     document.querySelector('.play-info-bar')?.after(progressBar);
 
     v2RenderQueue();
+    v2RenderActionTabs();
     v2RenderStaffPanel();
     v2RenderMessages();
 }
