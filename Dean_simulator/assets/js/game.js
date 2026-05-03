@@ -905,7 +905,7 @@ function v2ExecShowIndependentEvent(ev) {
         <h3>⚡ 突发事件：${ev.title}</h3>
         <div class="event-text">${ev.text}</div>
         <div class="event-choices">
-            ${ev.choices.map((c, i) => `<button class="btn" data-choice="${i}">${c.text}</button>`).join('')}
+            ${ev.choices.map((c, i) => `<button type="button" class="btn" data-choice="${i}">${c.text}</button>`).join('')}
         </div>
     </div>`;
     document.body.appendChild(popup);
@@ -922,8 +922,21 @@ function v2ExecShowIndependentEvent(ev) {
             v2ExecRefreshStatValues(oldStats);
 
             popup.remove();
-            if (nextBtn) nextBtn.style.display = 'inline-block';
-            v2ExecNextClick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+            const autoLabelAfter = document.getElementById('v2ExecAutoLabel');
+            if (autoLabelAfter) autoLabelAfter.style.display = 'block';
+            if (nextBtn) nextBtn.style.display = 'none';
+
+            let proceededAfterEvent = false;
+            const proceedAfterIndependentEvent = () => {
+                if (proceededAfterEvent) return;
+                proceededAfterEvent = true;
+                if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+                if (autoLabelAfter) autoLabelAfter.style.display = 'none';
+                v2ExecNextClick = null;
+                v2ExecNextStep();
+            };
+            v2ExecNextClick = proceedAfterIndependentEvent;
+            v2ExecAutoTimer = setTimeout(proceedAfterIndependentEvent, 750);
         };
     });
 }
