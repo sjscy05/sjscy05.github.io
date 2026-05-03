@@ -236,16 +236,7 @@ function v2RenderSetup() {
         }
     ];
 
-    window.v2SelectDept = (dept) => { v2.deptType = dept; _wizardStep = 2; v2RenderSetup(); };
-    window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; _wizardStep = 3; v2RenderSetup(); };
-    window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; _wizardStep = 4; v2RenderSetup(); };
-    window.v2ConfirmName = () => {
-        const name = (document.getElementById('v2NameInput')?.value || '').trim();
-        if (!name) return alert('请输入名字');
-        v2.playerName = name;
-        _wizardStep = 0;
-        v2InitGame();
-    };
+    // 向导步进回调在文件末尾挂到 window，保证与首屏「开始」一样在首包加载后始终可用
 
     // 按步骤执行
     if (steps[step]) steps[step]();
@@ -1190,7 +1181,7 @@ function v2EndWithMessage(msg, type) {
             <div class="recap-stat">总月数：${v2.totalMonth} | 称号：${v2.titles.length}</div>
             <div class="recap-stat">周目点数：${meta.points || 0} | 最高分：${meta.bestScore || 0}</div>
         </div>
-        <button class="btn" onclick="v2RenderSetup()" style="text-align:center;">🔄 再来一次</button>
+        <button class="btn" onclick="v2RestartNewGame()" style="text-align:center;">🔄 再来一次</button>
         <button class="btn secondary" onclick="v2ShowAchievements()" style="text-align:center;">🏆 成就查看</button>
     </div>`;
 }
@@ -1263,7 +1254,7 @@ function v2ShowMenu() {
             ${[1,2,3].map(i => `<button class="btn" onclick="v2SaveGame(${i})" style="text-align:center;width:100%;margin-bottom:4px;">保存到存档 ${i}</button>`).join('')}
             ${[1,2,3].map(i => `<button class="btn secondary" onclick="v2LoadGame(${i})" style="text-align:center;width:100%;margin-bottom:4px;">读取存档 ${i}</button>`).join('')}
             <button class="btn warning" onclick="v2RenderPlaying()" style="text-align:center;margin-top:8px;">◀ 返回游戏</button>
-            <button class="btn warning" onclick="if(confirm('确定重新开始？'))v2RenderSetup()" style="text-align:center;">🔄 重新开始</button>
+            <button class="btn warning" onclick="if(confirm('确定重新开始？'))v2RestartNewGame()" style="text-align:center;">🔄 重新开始</button>
         </div>
     </div>`;
 }
@@ -1319,8 +1310,19 @@ function v2QueueAchievementToast(name, points) {
 }
 
 // ========== 暴露全局接口 ==========
-// 内联 onclick 无法写入模块内的 let，必须通过 window 上的函数推进向导
+// ES 模块内联 onclick 只能调用 window 上的函数；向导步进/选项须在此注册，避免仅在某次 v2RenderSetup 内赋值导致偶发未定义
 window.v2WizardAfterIntro = () => { _wizardStep = 1; v2RenderSetup(); };
+window.v2SelectDept = (dept) => { v2.deptType = dept; _wizardStep = 2; v2RenderSetup(); };
+window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; _wizardStep = 3; v2RenderSetup(); };
+window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; _wizardStep = 4; v2RenderSetup(); };
+window.v2ConfirmName = () => {
+    const name = (document.getElementById('v2NameInput')?.value || '').trim();
+    if (!name) return alert('请输入名字');
+    v2.playerName = name;
+    _wizardStep = 0;
+    v2InitGame();
+};
+window.v2RestartNewGame = () => { _wizardStep = 0; v2RenderSetup(); };
 window.v2RenderSetup = v2RenderSetup;
 window.v2RenderPlaying = v2RenderPlaying;
 window.v2ToggleStaff = v2ToggleStaff;
@@ -1349,7 +1351,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <h2>🏫 院长模拟器</h2>
             <div style="margin:20px 0;color:#8fa8b8;font-size:0.88em;">检测到之前的存档</div>
             <button class="btn" onclick="if(v2LoadGame('auto')){}" style="text-align:center;margin-bottom:6px;">📂 继续上次的任期</button>
-            <button class="btn warning" onclick="v2RenderSetup()" style="text-align:center;">🔄 重新开始</button>
+            <button class="btn warning" onclick="v2RestartNewGame()" style="text-align:center;">🔄 重新开始</button>
         </div>`;
     } else {
         v2RenderSetup();

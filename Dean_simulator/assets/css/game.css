@@ -349,6 +349,21 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
 .stat-name { color: #a0b4c7; }
 .stat-val { font-weight: bold; color: #f8c291; margin-left: 4px; }
 .story-wrap { margin: 12px 0; }
+/* 向导：院系 / 培养方案 / 难度选项卡片（game.js 内联 onclick 依赖 window.v2Select*） */
+.dept-option {
+    cursor: pointer;
+    background: #1e2b3c;
+    border: 2px solid #3d5166;
+    padding: 10px 12px;
+    margin: 8px 0;
+    border-radius: 2px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dept-option:hover {
+    border-color: #4a9eff;
+    background: #243142;
+}
+
 .story-box { background: #141c24; border: 2px solid #d4a017; border-left-width: 6px; padding: 12px 14px; border-radius: 2px; margin: 0; line-height: 1.45; white-space: pre-wrap; max-height: 6.2em; overflow: hidden; transition: max-height 0.25s ease; min-height: 4.5em; font-size: 0.95em; }
 .story-box.expanded { max-height: 80vh; overflow-y: auto; }
 .story-toggle { width: 100%; margin-top: 4px; padding: 6px; font-size: 0.85em; cursor: pointer; background: #2d3d4d; color: #f5cd79; border: 2px solid #5c6f7e; border-radius: 2px; font-family: inherit; }
