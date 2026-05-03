@@ -11,8 +11,13 @@ import {
 } from './events.js';
 
 // ========== 辅助函数 ==========
-function clamp(v, min, max) { return Math.max(min, Math.max(v, max)); }
+function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
 function v2Pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function v2RandomInRange(range) {
+    if (!range || range.length < 2) return null;
+    const [lo, hi] = range;
+    return lo + Math.floor(Math.random() * (hi - lo + 1));
+}
 
 // ========== 状态初始化 ==========
 let v2 = {};
@@ -172,7 +177,7 @@ function v2RenderSetup() {
             app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
                 <h2>🏫 院长模拟器</h2>
                 <div class="story-box typing-active">你是一名${ageText}的高校院系负责人。每一个决策，都将影响整个学院的命运。</div>
-                <button class="btn" onclick="_wizardStep=1;v2RenderSetup()" style="margin-top:12px;">开始 →</button>
+                <button class="btn" onclick="v2WizardAfterIntro()" style="margin-top:12px;">开始 →</button>
             </div>`;
         },
         // step 1: 选择院系
@@ -282,8 +287,8 @@ function v2InitGame() {
             title: t.title,
             name: persona.name || '未命名',
             trait: persona.trait || '普通',
-            ability: persona.ability || (30 + Math.floor(Math.random() * 40)),
-            loyalty: persona.loyalty || (20 + Math.floor(Math.random() * 30)),
+            ability: persona.ability ?? v2RandomInRange(persona.abilityRange) ?? (30 + Math.floor(Math.random() * 40)),
+            loyalty: persona.loyalty ?? v2RandomInRange(persona.loyaltyRange) ?? (20 + Math.floor(Math.random() * 30)),
             profile: persona.profile || '一位下属。',
             quest: persona.quest || null,
             flaw: persona.flaw || null
@@ -625,8 +630,8 @@ function v2ExecShowStatToast(name, oldVal, newVal) {
 }
 
 function v2RenderExecution() {
-    if (v2.typingTimer) { clearInterval(v2.typingTimer); v2.typingTimer = null; }
-    if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    if (v2.typingTimer) { clearTimeout(v2.typingTimer); v2.typingTimer = null; }
+    if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
 
     const appV2 = document.getElementById('app');
     const dept = DEPT_CONFIG[v2.deptType];
@@ -748,7 +753,7 @@ function v2UpdateExecProgress() {
 }
 
 function v2ExecNextStep() {
-    if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
 
     if (v2.executionRandomEvents && v2.executionRandomEvents.length > 0 && Math.random() < 0.15) {
         const ev = v2.executionRandomEvents.shift();
@@ -790,7 +795,7 @@ function v2ExecNextStep() {
             });
         }
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'comment') {
         stagePane.classList.add('highlight-comment');
         stagePane.innerHTML = `<h3>💬 校园声音</h3><div class="exec-narr exec-typewriter-cursor" id="v2ExecCommentActive"></div>`;
@@ -803,7 +808,7 @@ function v2ExecNextStep() {
             });
         }
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'task') {
         const task = step.task;
         const feedback = v2ResolveTask(task);
@@ -830,7 +835,7 @@ function v2ExecNextStep() {
             });
         }
 
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'personalStory') {
         stagePane.classList.add('highlight-personal');
         const stories = [
@@ -862,14 +867,14 @@ function v2ExecNextStep() {
             });
         }
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     }
 }
 
 function v2ExecShowIndependentEvent(ev) {
     const narrEl = document.getElementById('v2ExecNarr');
     const nextBtn = document.getElementById('v2ExecNextBtn');
-    if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
     const autoLabel = document.getElementById('v2ExecAutoLabel');
     if (autoLabel) autoLabel.style.display = 'none';
 
@@ -898,7 +903,7 @@ function v2ExecShowIndependentEvent(ev) {
 
             popup.remove();
             if (nextBtn) nextBtn.style.display = 'inline-block';
-            nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+            nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
         };
     });
 }
@@ -927,7 +932,7 @@ function v2ExecRefreshStatValues(oldStats) {
 }
 
 function v2ExecFinish() {
-    if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
     const fundsBefore = v2.funds;
     const queueSnap = v2.pendingExecutionQueue;
     const meta = v2MetaLoad();
@@ -1009,7 +1014,7 @@ function v2ExecFinish() {
 
 function v2AbortExecution() {
     if (!confirm('确定放弃当月的执行进度？已消耗的天数不会退还。')) return;
-    if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
     v2.executionMode = false;
     v2.pendingExecutionQueue = null;
     v2.executionTimeline = null;
@@ -1165,7 +1170,7 @@ function v2CheckEndings() {
 function v2EndWithMessage(msg, type) {
     v2.gameOver = true;
     v2.executionMode = false;
-    if (v2ExecAutoTimer) { clearInterval(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
 
     // 更新周目数据
     const meta = v2MetaLoad();
@@ -1218,7 +1223,7 @@ function v2Typewriter(text, targetId, skipBtnId, onComplete) {
     if (!el) return;
 
     let idx = 0;
-    if (v2.typingTimer) { clearInterval(v2.typingTimer); }
+    if (v2.typingTimer) { clearTimeout(v2.typingTimer); }
 
     el.textContent = '';
     const speed = 28;
@@ -1238,7 +1243,7 @@ function v2Typewriter(text, targetId, skipBtnId, onComplete) {
     const skipBtn = document.getElementById(skipBtnId);
     if (skipBtn) {
         skipBtn.onclick = () => {
-            if (v2.typingTimer) { clearInterval(v2.typingTimer); v2.typingTimer = null; }
+            if (v2.typingTimer) { clearTimeout(v2.typingTimer); v2.typingTimer = null; }
             el.textContent = text;
             if (onComplete) onComplete();
         };
@@ -1314,6 +1319,8 @@ function v2QueueAchievementToast(name, points) {
 }
 
 // ========== 暴露全局接口 ==========
+// 内联 onclick 无法写入模块内的 let，必须通过 window 上的函数推进向导
+window.v2WizardAfterIntro = () => { _wizardStep = 1; v2RenderSetup(); };
 window.v2RenderSetup = v2RenderSetup;
 window.v2RenderPlaying = v2RenderPlaying;
 window.v2ToggleStaff = v2ToggleStaff;
