@@ -574,6 +574,25 @@ function v2RenderMessages() {
 
 // ========== 月度排程执行 ==========
 let v2ExecAutoTimer = null;
+/** 执行页底部「继续」对应逻辑（由 #v2ExecActions 委托点击触发，避免 onclick 与布局挤压失效） */
+let v2ExecNextClick = null;
+/** 执行页「跳过打字」对应逻辑 */
+let v2ExecSkipClick = null;
+
+function v2ExecActionsDelegated(ev) {
+    const raw = ev.target;
+    const el = raw && raw.nodeType === Node.ELEMENT_NODE ? raw : raw?.parentElement;
+    if (!el || typeof el.closest !== 'function') return;
+    const btn = el.closest('button');
+    if (!btn || !ev.currentTarget.contains(btn)) return;
+    if (btn.id === 'v2ExecNextBtn') {
+        ev.preventDefault();
+        if (typeof v2ExecNextClick === 'function') v2ExecNextClick();
+    } else if (btn.id === 'v2ExecSkipText') {
+        ev.preventDefault();
+        if (typeof v2ExecSkipClick === 'function') v2ExecSkipClick();
+    }
+}
 
 function v2ExecuteMonth() {
     const dailyCount = v2.actionQueue.filter(x => x.type === 'daily').length;
@@ -631,9 +650,11 @@ function v2ExecShowStatToast(name, oldVal, newVal) {
 function v2RenderExecution() {
     if (v2.typingTimer) { clearTimeout(v2.typingTimer); v2.typingTimer = null; }
     if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    v2ExecNextClick = null;
+    v2ExecSkipClick = null;
 
     const appV2 = document.getElementById('app');
-    const dept = DEPT_CONFIG[v2.deptType];
+    const dept = DEPT_CONFIG[v2.deptType] || DEPT_CONFIG.cs;
 
     // 修复黑屏：移除过渡动画，强制重置 opacity/transform 避免动画 fill 残留
     appV2.classList.remove('page-transition-out');
@@ -667,11 +688,13 @@ function v2RenderExecution() {
             </div>
         </div>
         <div class="exec-actions" id="v2ExecActions">
-            <button class="btn skip" id="v2ExecSkipText" style="display:none">⏩ 跳过打字</button>
-            <button class="btn" id="v2ExecNextBtn" style="display:none">继续 →</button>
+            <button type="button" class="btn skip" id="v2ExecSkipText" style="display:none">⏩ 跳过打字</button>
+            <button type="button" class="btn" id="v2ExecNextBtn" style="display:none">继续 →</button>
             <span class="exec-auto-label" style="display:none" id="v2ExecAutoLabel">即将自动继续…</span>
         </div>
     </div>`;
+
+    document.getElementById('v2ExecActions')?.addEventListener('click', v2ExecActionsDelegated);
 
     const tasks = [...v2.pendingExecutionQueue];
     const dailyTasks = tasks.filter(t => t.type === 'daily');
@@ -787,13 +810,13 @@ function v2ExecNextStep() {
             v2Typewriter(step.text, 'v2ExecNarrActive', 'v2ExecSkipText', () => {
                 if (nextBtn) nextBtn.style.display = 'inline-block';
                 v2ExecAutoTimer = setTimeout(() => {
-                    if (nextBtn && nextBtn.style.display !== 'none') { nextBtn.click(); }
+                    if (nextBtn && nextBtn.style.display !== 'none' && v2ExecNextClick) v2ExecNextClick();
                 }, 3000);
                 if (autoLabel) autoLabel.style.display = 'block';
             });
         }
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        v2ExecNextClick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'comment') {
         stagePane.classList.add('highlight-comment');
         stagePane.innerHTML = `<h3>💬 校园声音</h3><div class="exec-narr exec-typewriter-cursor" id="v2ExecCommentActive"></div>`;
@@ -801,12 +824,12 @@ function v2ExecNextStep() {
         if (activeEl) {
             v2Typewriter(step.text, 'v2ExecCommentActive', 'v2ExecSkipText', () => {
                 if (nextBtn) nextBtn.style.display = 'inline-block';
-                v2ExecAutoTimer = setTimeout(() => { if (nextBtn) nextBtn.click(); }, 2500);
+                v2ExecAutoTimer = setTimeout(() => { if (nextBtn && v2ExecNextClick) v2ExecNextClick(); }, 2500);
                 if (autoLabel) autoLabel.style.display = 'block';
             });
         }
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        v2ExecNextClick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'task') {
         const task = step.task;
         const feedback = v2ResolveTask(task);
@@ -828,12 +851,12 @@ function v2ExecNextStep() {
         if (activeEl) {
             v2Typewriter(feedback, 'v2ExecTaskActive', 'v2ExecSkipText', () => {
                 if (nextBtn) nextBtn.style.display = 'inline-block';
-                v2ExecAutoTimer = setTimeout(() => { if (nextBtn) nextBtn.click(); }, 2500);
+                v2ExecAutoTimer = setTimeout(() => { if (nextBtn && v2ExecNextClick) v2ExecNextClick(); }, 2500);
                 if (autoLabel) autoLabel.style.display = 'block';
             });
         }
 
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        v2ExecNextClick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     } else if (step.type === 'personalStory') {
         stagePane.classList.add('highlight-personal');
         const stories = [
@@ -860,12 +883,12 @@ function v2ExecNextStep() {
         if (activeEl) {
             v2Typewriter(story.feedback, 'v2ExecPersonalActive', 'v2ExecSkipText', () => {
                 if (nextBtn) nextBtn.style.display = 'inline-block';
-                v2ExecAutoTimer = setTimeout(() => { if (nextBtn) nextBtn.click(); }, 2500);
+                v2ExecAutoTimer = setTimeout(() => { if (nextBtn && v2ExecNextClick) v2ExecNextClick(); }, 2500);
                 if (autoLabel) autoLabel.style.display = 'block';
             });
         }
         if (skipBtn) skipBtn.style.display = 'inline-block';
-        nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+        v2ExecNextClick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
     }
 }
 
@@ -900,7 +923,7 @@ function v2ExecShowIndependentEvent(ev) {
 
             popup.remove();
             if (nextBtn) nextBtn.style.display = 'inline-block';
-            nextBtn.onclick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
+            v2ExecNextClick = () => { if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; } v2ExecNextStep(); };
         };
     });
 }
@@ -930,6 +953,8 @@ function v2ExecRefreshStatValues(oldStats) {
 
 function v2ExecFinish() {
     if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    v2ExecNextClick = null;
+    v2ExecSkipClick = null;
     const fundsBefore = v2.funds;
     const queueSnap = v2.pendingExecutionQueue;
     const meta = v2MetaLoad();
@@ -1012,6 +1037,8 @@ function v2ExecFinish() {
 function v2AbortExecution() {
     if (!confirm('确定放弃当月的执行进度？已消耗的天数不会退还。')) return;
     if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
+    v2ExecNextClick = null;
+    v2ExecSkipClick = null;
     v2.executionMode = false;
     v2.pendingExecutionQueue = null;
     v2.executionTimeline = null;
@@ -1232,16 +1259,17 @@ function v2Typewriter(text, targetId, skipBtnId, onComplete) {
             v2.typingTimer = setTimeout(typeChar, speed);
         } else {
             v2.typingTimer = null;
+            v2ExecSkipClick = null;
             if (onComplete) onComplete();
         }
     }
 
-    // 绑定跳过按钮
     const skipBtn = document.getElementById(skipBtnId);
     if (skipBtn) {
-        skipBtn.onclick = () => {
+        v2ExecSkipClick = () => {
             if (v2.typingTimer) { clearTimeout(v2.typingTimer); v2.typingTimer = null; }
             el.textContent = text;
+            v2ExecSkipClick = null;
             if (onComplete) onComplete();
         };
         skipBtn.style.display = 'inline-block';
