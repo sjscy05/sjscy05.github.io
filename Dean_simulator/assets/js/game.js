@@ -459,11 +459,14 @@ function v2RenderPlaying() {
         </div>
     </div>`;
 
-    // 进度条
+    // 进度条（样式见 .play-progress / .play-progress-inner）
     const progressPercent = remaining <= 0 ? 100 : Math.round((queueDays / (queueDays + remaining)) * 100);
     const progressBar = document.createElement('div');
-    progressBar.style.cssText = `height:3px;background:#1e2b3c;margin:2px 10px;border-radius:2px;`;
-    progressBar.innerHTML = `<div style="width:${Math.min(progressPercent, 100)}%;height:100%;background:linear-gradient(90deg,#4a9eff,#6bc9ff);border-radius:2px;transition:width 0.3s;"></div>`;
+    progressBar.className = 'play-progress';
+    const progressInner = document.createElement('div');
+    progressInner.className = 'play-progress-inner';
+    progressInner.style.width = `${Math.min(progressPercent, 100)}%`;
+    progressBar.appendChild(progressInner);
     document.querySelector('.play-info-bar')?.after(progressBar);
 
     v2RenderQueue();
