@@ -764,12 +764,11 @@ function v2ExecNextStep() {
     }
 
     const step = v2.executionTimeline[v2.executionStep];
-    const narrEl = document.getElementById('v2ExecNarr');
     const stagePane = document.getElementById('v2ExecStagePane');
     const nextBtn = document.getElementById('v2ExecNextBtn');
     const skipBtn = document.getElementById('v2ExecSkipText');
-    const actions = document.getElementById('v2ExecActions');
-    if (!narrEl || !stagePane) return;
+    // 勿检查 #v2ExecNarr：首段旁白后会清空 stagePane，该节点已从 DOM 移除，否则第二次点「继续」会在此静默 return
+    if (!stagePane || !nextBtn) return;
 
     v2.executionStep++;
     v2UpdateExecProgress();
@@ -871,7 +870,6 @@ function v2ExecNextStep() {
 }
 
 function v2ExecShowIndependentEvent(ev) {
-    const narrEl = document.getElementById('v2ExecNarr');
     const nextBtn = document.getElementById('v2ExecNextBtn');
     if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
     const autoLabel = document.getElementById('v2ExecAutoLabel');
