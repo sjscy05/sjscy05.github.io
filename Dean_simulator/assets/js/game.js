@@ -197,14 +197,22 @@ function v2RenderSetup() {
         },
         // step 2: 培养方案
         () => {
-            const curOptions = Object.entries(CURRICULUM_PASSIVE).map(([k, v]) =>
-                `<div class="dept-option" onclick="v2SelectCurriculum('${k}')">
-                    <span class="dept-name">${v.name}</span>
-                    <span style="display:block;font-size:0.78em;color:#8fa8b8;">
-                        ${Object.entries(v).filter(([kk]) => kk !== 'name').map(([kk, vv]) => `${kk}每月+${vv}`).join('，')}
-                    </span>
-                </div>`
-            ).join('');
+            const curStatZh = { academicRep: '学术', funds: '经费', studentEval: '学生', adminRep: '行政', morale: '士气' };
+            const curOptions = Object.entries(CURRICULUM_PASSIVE).map(([k, v]) => {
+                const sub = Object.entries(v)
+                    .filter(([kk]) => kk !== 'name')
+                    .map(([kk, vv]) => {
+                        const label = curStatZh[kk] || kk;
+                        const n = Number(vv);
+                        const sign = n >= 0 ? '+' : '';
+                        return `${label}每月${sign}${n}`;
+                    })
+                    .join('，');
+                return `<div class="dept-option" onclick="v2SelectCurriculum('${k}')">
+                    <span class="dept-name">${v.name || k}</span>
+                    <span style="display:block;font-size:0.78em;color:#8fa8b8;">${sub}</span>
+                </div>`;
+            }).join('');
             app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
                 <h2>📚 培养方案</h2>
                 <div style="margin:16px 0;">${curOptions}</div>

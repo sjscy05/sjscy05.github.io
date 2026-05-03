@@ -137,12 +137,12 @@ export const DEPT_CONFIG = {
 };
 
 export const CURRICULUM_PASSIVE = {
-    theoretical: { academicRep: 2 },
-    applied: { studentEval: 2 },
-    balanced: { academicRep: 1, studentEval: 1 },
-    research: { academicRep: 3, funds: -1 },
-    industry: { funds: 2, studentEval: 2, adminRep: 1 },
-    global: { academicRep: 1, studentEval: 2, adminRep: 1 }
+    theoretical: { name: '理论扎实型', academicRep: 2 },
+    applied: { name: '应用技能型', studentEval: 2 },
+    balanced: { name: '均衡培养', academicRep: 1, studentEval: 1 },
+    research: { name: '科研驱动型', academicRep: 3, funds: -1 },
+    industry: { name: '产学对接型', funds: 2, studentEval: 2, adminRep: 1 },
+    global: { name: '国际视野型', academicRep: 1, studentEval: 2, adminRep: 1 }
 };
 
 export const OFFICE_DECOR = [
