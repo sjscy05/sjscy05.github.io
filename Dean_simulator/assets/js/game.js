@@ -76,7 +76,11 @@ function v2DefaultState() {
         prevEval: 0,
         typingTimer: null,
         _execStatSnapshot: null,
-        _activeTab: 'daily'  // 跟踪当前选中的行动Tab
+        _activeTab: 'daily',  // 跟踪当前选中的行动Tab
+        /** 开局年龄档（含 effect） */
+        ageProfile: null,
+        /** 三条背景词条：身世 / 风格 / 性格 各一条，见 BACKGROUND_POOL */
+        backgroundTraits: []
     };
 }
 
@@ -118,6 +122,12 @@ function v2FormatAssumeOfficeLine(deptName) {
     return `你已就任${n}负责人`;
 }
 
+const _traitStatZh = { academicRep: '学术', funds: '经费', studentEval: '学生', adminRep: '行政', morale: '士气' };
+function v2FormatTraitEffectShort(effect) {
+    if (!effect || !Object.keys(effect).length) return '数值均衡';
+    return Object.entries(effect).map(([k, v]) => `${_traitStatZh[k] || k}${Number(v) >= 0 ? '+' : ''}${v}`).join('，');
+}
+
 function v2PushMail(text) {
     v2.messages.push({ text, turn: v2.totalMonth });
 }
@@ -143,6 +153,8 @@ function v2LoadGame(slot) {
     try {
         const data = JSON.parse(raw);
         Object.assign(v2, data);
+        if (!('ageProfile' in data)) v2.ageProfile = null;
+        if (!Array.isArray(data.backgroundTraits)) v2.backgroundTraits = [];
         v2.executionMode = false;
         v2.typingTimer = null;
         v2PushMail('📂 读档完成');
@@ -171,24 +183,88 @@ function v2MetaSave(meta) {
 
 // ========== 开局向导 ==========
 let _wizardStep = 0;
+/** 向导内临时背景：年龄 + 身世/风格/性格各一条（分池互斥，杜绝双选矛盾词条） */
+let _wizBackground = { age: null, family: null, style: null, personality: null };
 
 function v2RenderSetup() {
     v2.gameOver = false;
     const app = document.getElementById('app');
     const step = _wizardStep;
+    if (step === 0) {
+        _wizBackground = { age: null, family: null, style: null, personality: null };
+    }
 
     const steps = [
-        // step 0: 开场叙事
+        // step 0: 开场
         () => {
-            const bg = BACKGROUND_POOL.age[Math.floor(Math.random() * BACKGROUND_POOL.age.length)];
-            const ageText = bg.tag + "（" + bg.value + "岁）";
             app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
                 <h2>🏫 院长模拟器</h2>
-                <div class="story-box typing-active">你是一名${ageText}的高校院系负责人。每一个决策，都将影响整个学院的命运。</div>
-                <button class="btn" onclick="v2WizardAfterIntro()" style="margin-top:12px;">开始 →</button>
+                <div class="story-box typing-active">你将扮演一名高校院系负责人。请先构筑<strong>年龄</strong>与<strong>三条背景词条</strong>（身世、风格、性格各选其一，逻辑互斥），再选择院系与培养方案。</div>
+                <p style="color:#8fa8b8;font-size:0.82em;margin:12px 0;line-height:1.45;">词条分三组，每组只能选一条，不会出现「两种身世」等同池冲突。</p>
+                <button class="btn" onclick="v2WizardAfterIntro()" style="margin-top:8px;">开始构筑 →</button>
             </div>`;
         },
-        // step 1: 选择院系
+        // step 1: 年龄档
+        () => {
+            const cards = BACKGROUND_POOL.age.map((a, i) =>
+                `<div class="dept-option" onclick="v2WizardPickAge(${i})">
+                    <span class="dept-name">${a.tag}（${a.value}岁）</span>
+                    <span style="display:block;font-size:0.78em;color:#8fa8b8;">初始：${v2FormatTraitEffectShort(a.effect)}</span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>📅 年龄档</h2>
+                <div style="margin:16px 0;">${cards}</div>
+                <button type="button" class="btn secondary" onclick="v2WizardRollFromAgeStep()" style="margin-top:8px;">🎲 随机年龄并抽取三条词条（身世·风格·性格）</button>
+                <div style="color:#7f9aab;font-size:0.78em;margin-top:8px;">三项词条将从对应词库各随机一条，彼此分池，无组合冲突。</div>
+            </div>`;
+        },
+        // step 2: 身世词条（family）
+        () => {
+            const cards = BACKGROUND_POOL.family.map((t, i) =>
+                `<div class="dept-option" onclick="v2WizardPickTrait('family',${i})">
+                    <span class="dept-name">${t.tag}</span>
+                    <span style="display:block;font-size:0.78em;color:#b0cec4;">${t.desc}</span>
+                    <span style="display:block;font-size:0.76em;color:#8fa8b8;margin-top:4px;">${v2FormatTraitEffectShort(t.effect)}</span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>📖 身世词条</h2>
+                <div style="margin:16px 0;">${cards}</div>
+                <div style="color:#7f9aab;font-size:0.82em;">已选年龄：<strong>${_wizBackground.age ? _wizBackground.age.tag : ''}</strong></div>
+            </div>`;
+        },
+        // step 3: 风格词条（style）
+        () => {
+            const cards = BACKGROUND_POOL.style.map((t, i) =>
+                `<div class="dept-option" onclick="v2WizardPickTrait('style',${i})">
+                    <span class="dept-name">${t.tag}</span>
+                    <span style="display:block;font-size:0.78em;color:#b0cec4;">${t.desc}</span>
+                    <span style="display:block;font-size:0.76em;color:#8fa8b8;margin-top:4px;">${v2FormatTraitEffectShort(t.effect)}</span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>🎨 风格词条</h2>
+                <div style="margin:16px 0;">${cards}</div>
+                <div style="color:#7f9aab;font-size:0.82em;">身世：<strong>${_wizBackground.family ? _wizBackground.family.tag : ''}</strong></div>
+            </div>`;
+        },
+        // step 4: 性格词条（personality）
+        () => {
+            const cards = BACKGROUND_POOL.personality.map((t, i) =>
+                `<div class="dept-option" onclick="v2WizardPickTrait('personality',${i})">
+                    <span class="dept-name">${t.tag}</span>
+                    <span style="display:block;font-size:0.78em;color:#b0cec4;">${t.desc}</span>
+                    <span style="display:block;font-size:0.76em;color:#8fa8b8;margin-top:4px;">${v2FormatTraitEffectShort(t.effect)}</span>
+                </div>`
+            ).join('');
+            app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
+                <h2>🎭 性格词条</h2>
+                <div style="margin:16px 0;">${cards}</div>
+                <div style="color:#7f9aab;font-size:0.82em;">身世 ${(_wizBackground.family && _wizBackground.family.tag) || '—'} · 风格 <strong>${_wizBackground.style ? _wizBackground.style.tag : ''}</strong></div>
+            </div>`;
+        },
+        // step 5: 选择院系
         () => {
             const deptOptions = Object.entries(DEPT_CONFIG).map(([k, v]) =>
                 `<div class="dept-option" onclick="v2SelectDept('${k}')">
@@ -197,13 +273,20 @@ function v2RenderSetup() {
                     <span class="dept-init">${Object.entries(v.init||{}).map(([kk, vv]) => `${{'academicRep':'学术','funds':'经费','studentEval':'学生','adminRep':'行政','morale':'士气'}[kk]||kk}${vv>=0?'+':''}${vv}`).join(', ')}</span>
                 </div>`
             ).join('');
+            const bgRecap = [
+                _wizBackground.age && `年龄：${_wizBackground.age.tag}`,
+                _wizBackground.family && `身世：${_wizBackground.family.tag}`,
+                _wizBackground.style && `风格：${_wizBackground.style.tag}`,
+                _wizBackground.personality && `性格：${_wizBackground.personality.tag}`
+            ].filter(Boolean).join(' · ');
             app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
                 <h2>🏫 选择你的院系</h2>
+                <div style="color:#8fa8b8;font-size:0.84em;margin-bottom:12px;line-height:1.4;">${bgRecap || '（背景未完整，请从第一步重新构筑）'}</div>
                 <div style="margin:16px 0;">${deptOptions}</div>
                 <div style="color:#7f9aab;font-size:0.82em;">不同的院系有截然不同的初始资源和挑战。</div>
             </div>`;
         },
-        // step 2: 培养方案
+        // step 6: 培养方案
         () => {
             const curStatZh = { academicRep: '学术', funds: '经费', studentEval: '学生', adminRep: '行政', morale: '士气' };
             const curOptions = Object.entries(CURRICULUM_PASSIVE).map(([k, v]) => {
@@ -227,7 +310,7 @@ function v2RenderSetup() {
                 <div style="color:#7f9aab;font-size:0.82em;">每学期结算时提供被动数值加成。</div>
             </div>`;
         },
-        // step 3: 难度选择
+        // step 7: 难度选择
         () => {
             const diffOptions = Object.entries(DIFFICULTY_PRESETS).map(([k, v]) =>
                 `<div class="dept-option" onclick="v2SelectDifficulty('${k}')">
@@ -239,7 +322,7 @@ function v2RenderSetup() {
                 <div style="margin:16px 0;">${diffOptions}</div>
             </div>`;
         },
-        // step 4: 姓名
+        // step 8: 姓名
         () => {
             app.innerHTML = `<div class="page-transition-in" style="max-width:480px;margin:auto;">
                 <h2>✍️ 输入你的名字</h2>
@@ -267,12 +350,18 @@ function v2InitGame() {
     const deptType = v2.deptType;
     const curriculum = v2.curriculum;
     const difficulty = v2.difficulty;
+    const ageProfile = v2.ageProfile;
+    const backgroundTraits = v2.backgroundTraits;
 
     Object.assign(v2, JSON.parse(JSON.stringify(defaults)));
     v2.playerName = playerName;
     v2.deptType = deptType;
     v2.curriculum = curriculum;
     v2.difficulty = difficulty;
+    v2.ageProfile = ageProfile ? JSON.parse(JSON.stringify(ageProfile)) : null;
+    v2.backgroundTraits = Array.isArray(backgroundTraits)
+        ? JSON.parse(JSON.stringify(backgroundTraits))
+        : [];
 
     // 应用院系修正
     const dept = DEPT_CONFIG[deptType];
@@ -281,6 +370,12 @@ function v2InitGame() {
     // 应用难度修正
     const diff = DIFFICULTY_PRESETS[difficulty];
     if (diff && diff.init) v2ApplyEffect(diff.init);
+
+    // 年龄档与三条背景词条（分池各一条，数值叠加无叙事冲突）
+    if (v2.ageProfile && v2.ageProfile.effect) v2ApplyEffect(v2.ageProfile.effect);
+    (v2.backgroundTraits || []).forEach(tr => {
+        if (tr && tr.effect) v2ApplyEffect(tr.effect);
+    });
 
     // 初始关系
     v2.relations = JSON.parse(JSON.stringify(INITIAL_RELATION));
@@ -305,6 +400,8 @@ function v2InitGame() {
     // 初始消息
     const deptName = DEPT_CONFIG[deptType]?.name || '未知院系';
     v2PushMail(`📋 欢迎到任！${v2FormatAssumeOfficeLine(deptName)}。`);
+    const bgTags = [v2.ageProfile?.tag, ...(v2.backgroundTraits || []).map(t => t?.tag)].filter(Boolean);
+    if (bgTags.length) v2PushMail(`📜 背景构筑：${bgTags.join(' · ')}`);
     v2PushMail('📌 提示：每月至少排1项日常+1项重点方可执行月度。');
 
     v2.availableDays = v2CalcAvailableDays();
@@ -320,12 +417,17 @@ function v2RenderPlaying() {
     const remaining = v2.availableDays - v2.usedDays - queueDays;
     const canExec = v2.actionQueue.filter(t => t.type === 'daily').length >= 1 &&
                     v2.actionQueue.filter(t => t.type === 'focus').length >= 1 && !v2.currentEvent;
+    const bgHeaderTags = [v2.ageProfile?.tag, ...(v2.backgroundTraits || []).map(t => t?.tag)].filter(Boolean);
+    const bgHeaderHtml = bgHeaderTags.length
+        ? `<span style="display:block;color:#7f9aab;font-size:0.74em;margin-top:4px;">${bgHeaderTags.join(' · ')}</span>`
+        : '';
 
     app.innerHTML = `<div class="play-container page-transition-in">
         <div class="play-header">
             <div><span style="font-size:1.1em;">${dept.icon || ''} ${dept.name || ''} · ${v2.playerName}</span>
             <span style="color:#8fa8b8;font-size:0.78em;margin-left:8px;">第${v2.semester}学期 第${v2.month}月</span>
-            <span style="color:#7f9aab;font-size:0.78em;margin-left:6px;">(总月${v2.totalMonth})</span></div>
+            <span style="color:#7f9aab;font-size:0.78em;margin-left:6px;">(总月${v2.totalMonth})</span>
+            ${bgHeaderHtml}</div>
             <div style="display:flex;gap:6px;">
                 <button class="btn small" onclick="v2ShowMenu()" style="font-size:0.78em;">☰ 菜单</button>
                 <button class="btn small" onclick="v2ShowAchievements()" style="font-size:0.78em;">🏆 成就</button>
@@ -1368,13 +1470,46 @@ function v2QueueAchievementToast(name, points) {
 // ========== 暴露全局接口 ==========
 // ES 模块内联 onclick 只能调用 window 上的函数；向导步进/选项须在此注册，避免仅在某次 v2RenderSetup 内赋值导致偶发未定义
 window.v2WizardAfterIntro = () => { _wizardStep = 1; v2RenderSetup(); };
-window.v2SelectDept = (dept) => { v2.deptType = dept; _wizardStep = 2; v2RenderSetup(); };
-window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; _wizardStep = 3; v2RenderSetup(); };
-window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; _wizardStep = 4; v2RenderSetup(); };
+window.v2WizardPickAge = (i) => {
+    const a = BACKGROUND_POOL.age[i];
+    if (!a) return;
+    _wizBackground.age = { ...a };
+    _wizardStep = 2;
+    v2RenderSetup();
+};
+window.v2WizardPickTrait = (poolKey, idx) => {
+    const pool = BACKGROUND_POOL[poolKey];
+    if (!pool || pool[idx] === undefined) return;
+    _wizBackground[poolKey] = { ...pool[idx] };
+    if (poolKey === 'family') _wizardStep = 3;
+    else if (poolKey === 'style') _wizardStep = 4;
+    else if (poolKey === 'personality') _wizardStep = 5;
+    v2RenderSetup();
+};
+window.v2WizardRollFromAgeStep = () => {
+    _wizBackground.age = { ...v2Pick(BACKGROUND_POOL.age) };
+    _wizBackground.family = { ...v2Pick(BACKGROUND_POOL.family) };
+    _wizBackground.style = { ...v2Pick(BACKGROUND_POOL.style) };
+    _wizBackground.personality = { ...v2Pick(BACKGROUND_POOL.personality) };
+    _wizardStep = 5;
+    v2RenderSetup();
+};
+window.v2SelectDept = (dept) => { v2.deptType = dept; _wizardStep = 6; v2RenderSetup(); };
+window.v2SelectCurriculum = (cur) => { v2.curriculum = cur; _wizardStep = 7; v2RenderSetup(); };
+window.v2SelectDifficulty = (diff) => { v2.difficulty = diff; _wizardStep = 8; v2RenderSetup(); };
 window.v2ConfirmName = () => {
     const name = (document.getElementById('v2NameInput')?.value || '').trim();
     if (!name) return alert('请输入名字');
+    if (!_wizBackground.age || !_wizBackground.family || !_wizBackground.style || !_wizBackground.personality) {
+        return alert('背景构筑不完整，请从「开始构筑」重新选择年龄与三条词条。');
+    }
     v2.playerName = name;
+    v2.ageProfile = JSON.parse(JSON.stringify(_wizBackground.age));
+    v2.backgroundTraits = [
+        _wizBackground.family,
+        _wizBackground.style,
+        _wizBackground.personality
+    ].map(t => JSON.parse(JSON.stringify(t)));
     _wizardStep = 0;
     v2InitGame();
 };

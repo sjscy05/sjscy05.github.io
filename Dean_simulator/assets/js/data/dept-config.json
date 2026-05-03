@@ -1,0 +1,45 @@
+{
+  "math": {
+    "name": "数学科学学院",
+    "icon": "📐",
+    "description": "拥有悠久的数论和拓扑学传统，基础研究实力雄厚但长期面临经费不足。",
+    "initialModifiers": {
+      "academicRep": 5,
+      "funds": -10
+    },
+    "flavor": {
+      "strength": "学术氛围浓厚，博士生培养体系完善",
+      "weakness": "应用转化薄弱，社会影响力不足",
+      "opportunity": "数据科学交叉领域方兴未艾",
+      "threat": "部分老教授即将退休，传承问题迫在眉睫"
+    }
+  },
+  "physics": {
+    "name": "物理科学与技术学院",
+    "icon": "⚛️",
+    "description": "实验与理论并重，光学和凝聚态方向在国内有稳定位置。各方面发展均衡。",
+    "initialModifiers": {},
+    "flavor": {
+      "strength": "各方向发展均衡，无显著短板",
+      "weakness": "缺少标志性突破方向",
+      "opportunity": "国际合作渠道打通中",
+      "threat": "兄弟院校的凝聚态团队势头很猛"
+    }
+  },
+  "cs": {
+    "name": "计算机与信息工程学院",
+    "icon": "💻",
+    "description": "学院成立时间较晚但在校方大力扶持下发展迅猛，企业和校友捐款使其经费充裕。",
+    "initialModifiers": {
+      "funds": 10,
+      "studentEval": 5,
+      "academicRep": -5
+    },
+    "flavor": {
+      "strength": "经费充裕，社会影响力高",
+      "weakness": "学术积累尚浅，基础研究偏弱",
+      "opportunity": "大模型与AI浪潮已到门口",
+      "threat": "核心教师频繁被大厂挖角"
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "info": "院长模拟器 V2 事件数据配置（策划可直接编辑）",
+  "version": "2.0",
+  "fixedEvents": {
+    "1": {
+      "title": "新学期开学典礼",
+      "text": "开学周连续爆出宿舍、选课和家长咨询问题，你必须快速定调。",
+      "choices": [
+        { "text": "亲自盯全流程", "days": 6, "effect": { "studentEval": 6, "morale": 3, "adminRep": 1 }, "feedback": "你在一线跑完整周，学生口碑明显回升。" },
+        { "text": "委托教务办主任", "days": 4, "effect": { "studentEval": 4, "adminRep": 2 }, "feedback": "教务办把流程压住了，但学术端感觉被边缘。", "staff": "admin_director" }
+      ]
+    },
+    "2": {
+      "title": "期中教学检查风波",
+      "text": "教务处突击检查发现部分课程考勤下滑、作业批改滞后，通报即将下发。",
+      "choices": [
+        { "text": "全院通报整改", "days": 5, "effect": { "studentEval": 3, "morale": -2, "adminRep": 4 }, "feedback": "你雷厉风行，通报发出后各系连夜补齐了材料，校方表示认可。" },
+        { "text": "私下联系各教研室主任", "days": 3, "effect": { "morale": 2, "adminRep": 1 }, "feedback": "你逐一电话沟通，将问题消化在内部，避免了公开通报。" },
+        { "text": "委托教学主任处理", "days": 4, "effect": { "studentEval": 2, "adminRep": 2 }, "feedback": "教学主任逐班核查，你得以腾出手处理其他事务。", "staff": "teach_director" }
+      ]
+    },
+    "3": {
+      "title": "招生宣传窗口期",
+      "text": "重点中学宣讲和线上投放撞期，学院只能优先选一个方向发力。",
+      "choices": [
+        { "text": "线下跑校宣讲", "days": 7, "effect": { "studentEval": 8, "funds": -4 }, "feedback": "你连跑多地，生源质量上扬。" },
+        { "text": "线上矩阵投放", "days": 5, "effect": { "studentEval": 6, "funds": -8, "adminRep": 1 }, "feedback": "覆盖面变大，但预算吃紧。" },
+        { "text": "保持中性投入", "days": 3, "effect": { "studentEval": 1 }, "feedback": "短期无明显波动。" }
+      ]
+    },
+    "4": {
+      "title": "年终绩效分配博弈",
+      "text": "绩效奖金分配方案引发各方不满——教学端抱怨课时费低，学术端指责成果奖励少，行政希望你兜底。",
+      "choices": [
+        { "text": "向教学倾斜", "days": 6, "effect": { "morale": 4, "academicRep": -3, "studentEval": 2 }, "feedback": "教师满意了，但学术骨干私下表达了不满。" },
+        { "text": "奖励学术成果", "days": 5, "effect": { "academicRep": 5, "morale": -2, "funds": -7 }, "feedback": "科研产出明年可期，但一线教师颇有微词。" },
+        { "text": "均衡分配加少量补贴", "days": 4, "effect": { "morale": 1, "funds": -3 }, "feedback": "各方都不满意但也都不反对——典型的妥协方案。" }
+      ]
+    },
+    "5": {
+      "title": "企业实习基地拓展",
+      "text": "校企合作办公室接到多家企业合作意向，但距离远、成本高、师资不足——你必须决定如何回应。",
+      "choices": [
+        { "text": "签约三家扩大版图", "days": 7, "effect": { "studentEval": 7, "funds": 6, "morale": -3, "academicRep": -1 }, "feedback": "实习版图扩张，但教师带教负荷明显加大。" },
+        { "text": "精选一家深度合作", "days": 5, "effect": { "studentEval": 4, "funds": 3, "adminRep": 3 }, "feedback": "合作质量很高，学校领导在校务会上点名表扬。" },
+        { "text": "先做调研暂不签约", "days": 3, "effect": { "academicRep": 1 }, "feedback": "你稳健行事，但学生在论坛表达了失望。" }
+      ]
+    },
+    "6": {
+      "title": "学科评估冲刺",
+      "text": "校内要求你在短期内提交评估材料，教学与学术端都在争资源。",
+      "choices": [
+        { "text": "全力冲刺材料", "days": 8, "effect": { "academicRep": 9, "morale": -3 }, "feedback": "申报质量高，但团队有疲态。" },
+        { "text": "委托学术主任主导", "days": 6, "effect": { "academicRep": 7, "adminRep": 1 }, "feedback": "学术输出稳定，管理负担降低。", "staff": "acad_director" },
+        { "text": "保守提交", "days": 4, "effect": { "academicRep": -2, "morale": 1 }, "feedback": "压力较小，但排名提升有限。" }
+      ]
+    },
+    "7": {
+      "title": "校园文化节与学术周冲突",
+      "text": "学生会策划的文化节与学术委员会的国际会议撞在同一周。两边都不愿让步，你必须决策。",
+      "choices": [
+        { "text": "支持文化节，推迟会议", "days": 5, "effect": { "studentEval": 7, "morale": 1, "academicRep": -3 }, "feedback": "学生一片欢呼，但邀请的海外学者改期后可能不来了。" },
+        { "text": "保障学术会议，文化节简化", "days": 6, "effect": { "academicRep": 5, "studentEval": -2, "morale": -2 }, "feedback": "会议圆满成功，但学生们抱怨学院太重视科研。" },
+        { "text": "两个都办，你两边跑", "days": 8, "effect": { "academicRep": 2, "studentEval": 4, "morale": 2, "adminRep": 3 }, "feedback": "你筋疲力尽但两场活动都体面收场。" }
+      ]
+    },
+    "8": {
+      "title": "期末工作总结与新学年规划",
+      "text": "学年末，校领导要求各院系提交工作总结和来年预算草案。数据显示部分指标未达标。",
+      "choices": [
+        { "text": "坦诚汇报，申请追加预算", "days": 5, "effect": { "adminRep": 3, "funds": 8, "morale": 2 }, "feedback": "校领导欣赏你的坦诚，追加预算获批。" },
+        { "text": "美化数据争取更多拨款", "days": 4, "effect": { "funds": 12, "adminRep": -5, "morale": -1 }, "feedback": "拨款到账了，但半年后审计风险让你夜不能寐。" },
+        { "text": "稳健汇报，不争不抢", "days": 3, "effect": { "adminRep": 1 }, "feedback": "波澜不惊——校领导觉得你稳重，但也觉得缺乏亮点。" },
+        { "text": "借机提出院系改革方案", "days": 7, "effect": { "academicRep": 3, "adminRep": 2, "morale": -3, "funds": -5 }, "feedback": "你递交了激进的改革方案，引发校内讨论。" }
+      ]
+    }
+  },
+  "deptSpecialEvents": {
+    "cs": {
+      "title": "大模型实验班风波",
+      "text": "企业希望共建，老师担心教学质量，学生期待很高。",
+      "choices": [
+        { "text": "快速试点", "days": 6, "effect": { "studentEval": 7, "funds": 4, "morale": -3 }, "feedback": "热度拉满，但内部争议上升。" },
+        { "text": "先做论证", "days": 5, "effect": { "academicRep": 4, "studentEval": 2, "adminRep": 2 }, "feedback": "节奏慢些，但整体认可度更稳。" }
+      ]
+    },
+    "literature": {
+      "title": "经典阅读计划争议",
+      "text": "学生想减背诵，教师坚持经典训练，你需要给出平衡方案。",
+      "choices": [
+        { "text": "双轨考核", "days": 5, "effect": { "studentEval": 5, "morale": 2 }, "feedback": "争议降温，教学秩序趋稳。" },
+        { "text": "维持原标准", "days": 4, "effect": { "academicRep": 4, "studentEval": -3 }, "feedback": "守住规范，但学生满意度回落。" }
+      ]
+    }
+  }
+}
