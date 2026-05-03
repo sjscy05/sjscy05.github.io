@@ -777,7 +777,8 @@ function v2UpdateExecProgress() {
 function v2ExecNextStep() {
     if (v2ExecAutoTimer) { clearTimeout(v2ExecAutoTimer); v2ExecAutoTimer = null; }
 
-    if (v2.executionRandomEvents && v2.executionRandomEvents.length > 0 && Math.random() < 0.15) {
+    // 仅在主时间线已开始推进后插入突发（executionStep>0 表示至少已展示过时间线第 1 步），避免一点「执行」尚未进入计划叙事就先弹突发
+    if (v2.executionStep > 0 && v2.executionRandomEvents && v2.executionRandomEvents.length > 0 && Math.random() < 0.15) {
         const ev = v2.executionRandomEvents.shift();
         if (ev) return v2ExecShowIndependentEvent(ev);
     }
