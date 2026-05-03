@@ -924,7 +924,7 @@ function v2ExecShowIndependentEvent(ev) {
             popup.remove();
             const autoLabelAfter = document.getElementById('v2ExecAutoLabel');
             if (autoLabelAfter) autoLabelAfter.style.display = 'block';
-            if (nextBtn) nextBtn.style.display = 'none';
+            if (nextBtn) nextBtn.style.display = 'inline-block';
 
             let proceededAfterEvent = false;
             const proceedAfterIndependentEvent = () => {
