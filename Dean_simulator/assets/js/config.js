@@ -158,9 +158,23 @@ export const TITLE_RULES = [
 ];
 
 export const ACHIEVEMENTS = [
+    /** 条件在 v2ExecFinish 内单独判定（需月初经费与队列快照），此处不设 cond */
     { id: 'low_fund_meeting', name: '逆风推进', desc: '月初经费低于10仍完成至少一项重点项目', points: 4 },
-    { id: 'all_loyal', name: '铁三角团队', desc: '核心下属忠诚同时超过80', points: 5 },
-    { id: 'admission_streak', name: '三连涨', desc: '连续三学期学生评价提升', points: 4 }
+    {
+        id: 'all_loyal',
+        name: '铁三角团队',
+        desc: '核心下属忠诚同时超过80',
+        points: 5,
+        cond: (g) => Array.isArray(g.staff) && g.staff.length >= 3 &&
+            g.staff.every(s => (s.loyalty ?? 0) > 80)
+    },
+    {
+        id: 'admission_streak',
+        name: '三连涨',
+        desc: '连续三月学生评价上升',
+        points: 4,
+        cond: (g) => (g.admissionStreak ?? 0) >= 3
+    }
 ];
 
 export const DIFFICULTY_PRESETS = {

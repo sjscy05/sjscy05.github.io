@@ -1089,9 +1089,9 @@ function v2ExecFinish() {
             const a = ACHIEVEMENTS.find(x => x.id === 'low_fund_meeting');
             if (a) {
                 meta.ach.push('low_fund_meeting');
-                meta.points += a.points;
+                meta.points = (meta.points || 0) + a.points;
                 v2PushMail(`成就解锁：${a.name}（+${a.points}周目点）`);
-                v2QueueAchievementToast(a.name, a.points);
+                v2QueueAchievementToast(a.name, a.points, a.desc);
             }
         }
     }
@@ -1099,12 +1099,12 @@ function v2ExecFinish() {
     const passive = CURRICULUM_PASSIVE[v2.curriculum] || CURRICULUM_PASSIVE.balanced;
     v2ApplyEffect(passive);
     v2UnlockTitles();
-    v2CheckAchievements();
-    v2UpdateStats();
-    const prevEval = v2.prevEval || v2.studentEval;
-    if (v2.studentEval > prevEval) v2.admissionStreak += 1;
+    const prevEvalForStreak = v2.prevEval ?? v2.studentEval;
+    if (v2.studentEval > prevEvalForStreak) v2.admissionStreak += 1;
     else v2.admissionStreak = 0;
     v2.prevEval = v2.studentEval;
+    v2CheckAchievements();
+    v2UpdateStats();
     v2.carryoverDays = Math.max(0, v2.usedDays - v2.availableDays);
 
     // 进度到下个月
@@ -1448,23 +1448,55 @@ function v2UnlockTitles() {
 function v2CheckAchievements() {
     const meta = v2MetaLoad();
     meta.ach = meta.ach || [];
+    let toastDelay = 0;
     ACHIEVEMENTS.forEach(a => {
         if (!meta.ach.includes(a.id) && a.cond && a.cond(v2, meta)) {
             meta.ach.push(a.id);
             meta.points = (meta.points || 0) + a.points;
             v2PushMail(`🏆 成就解锁：${a.name}（+${a.points}点）`);
+            const d = toastDelay;
+            setTimeout(() => v2QueueAchievementToast(a.name, a.points, a.desc), d);
+            toastDelay += 420;
         }
     });
     v2MetaSave(meta);
 }
 
-function v2QueueAchievementToast(name, points) {
-    const toast = document.createElement('div');
-    toast.className = 'ach-toast';
-    toast.innerHTML = `🏆 ${name} +${points}pt`;
-    toast.style.cssText = 'position:fixed;top:20px;right:20px;background:#1e2b3c;border:2px solid #d4a017;padding:12px 18px;border-radius:4px;color:#f5cd79;font-weight:bold;z-index:9999;animation:slideUpIn 0.4s ease both;';
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
+function v2EnsureToastHost() {
+    let host = document.getElementById('v2ToastHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'v2ToastHost';
+        host.setAttribute('aria-live', 'polite');
+        document.body.insertBefore(host, document.body.firstChild);
+    }
+    return host;
+}
+
+/** 成就解锁屏幕提示（左上角叠放，与邮件并行） */
+function v2QueueAchievementToast(name, points, desc) {
+    const host = v2EnsureToastHost();
+    const el = document.createElement('div');
+    el.className = 'v2-ach-toast';
+    el.setAttribute('role', 'status');
+    const safe = (s) => {
+        const t = document.createElement('span');
+        t.textContent = s == null ? '' : String(s);
+        return t.innerHTML;
+    };
+    el.innerHTML = `<span class="v2-ach-toast-badge">🏆 成就解锁</span>
+<strong class="v2-ach-toast-name">${safe(name)}</strong>
+<span class="v2-ach-toast-pts">+${Number(points) || 0} 周目点数</span>
+${desc ? `<span class="v2-ach-toast-desc">${safe(desc)}</span>` : ''}`;
+    host.appendChild(el);
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => el.classList.add('show'));
+    });
+    const hideMs = 4200;
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 280);
+    }, hideMs);
 }
 
 // ========== 暴露全局接口 ==========
