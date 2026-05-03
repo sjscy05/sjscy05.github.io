@@ -124,20 +124,43 @@
     box-sizing: border-box;
 }
 .exec-stage-header .exec-close:hover { color: #f5cd79; border-color: #f5cd79; }
+/* 与 .play-stats 一致：单行五列，禁止 flex-wrap 在窄屏下变成五行 */
 .exec-stats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 18px;
-    padding: 8px 12px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px 4px;
+    padding: 5px 6px;
     background: #141c24;
     border: 2px solid #2a3f4f;
     border-radius: 2px;
-    margin-bottom: 12px;
-    font-size: 0.88em;
+    margin-bottom: 10px;
+    font-size: inherit;
+    flex-shrink: 0;
 }
-.exec-stats .stat-item { display: flex; align-items: center; gap: 4px; }
-.exec-stats .stat-name { color: #7f9aab; }
-.exec-stats .stat-val { color: #f8c291; font-weight: bold; min-width: 24px; text-align: right; }
+.exec-stats .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 0;
+    min-width: 0;
+    padding: 2px 0;
+}
+.exec-stats .stat-name {
+    color: #7f9aab;
+    font-size: clamp(0.62rem, 2vw, 0.78em);
+    line-height: 1.15;
+    white-space: nowrap;
+}
+.exec-stats .stat-val {
+    color: #f8c291;
+    font-weight: bold;
+    margin-left: 0;
+    font-size: clamp(0.76rem, 2.6vw, 0.92em);
+    line-height: 1.1;
+    text-align: center;
+}
 .exec-progress {
     display: flex;
     gap: 4px;
@@ -436,6 +459,8 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
     border: 2px solid #3d5166;
     border-radius: 2px;
     flex-shrink: 0;
+    width: 100%;
+    box-sizing: border-box;
 }
 .play-stats .stat-item {
     display: flex;
@@ -714,11 +739,13 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
     .play-body {
         grid-template-columns: 1fr;
     }
-    .play-stats {
+    .play-stats,
+    .exec-stats {
         gap: 2px;
         padding: 4px 4px;
     }
-    .play-stats .stat-name {
+    .play-stats .stat-name,
+    .exec-stats .stat-name {
         white-space: normal;
         font-size: clamp(0.58rem, 1.85vw, 0.72em);
     }
