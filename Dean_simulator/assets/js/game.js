@@ -110,6 +110,14 @@ function v2CalcAvailableDays() {
 }
 
 // ========== 消息/邮件系统 ==========
+/** 任职称谓：「××学院」→ 院长；「××系」→ 主任（避免出现「数学系院长」等不合惯例搭配） */
+function v2FormatAssumeOfficeLine(deptName) {
+    const n = (deptName || '').trim() || '本单位';
+    if (n.includes('学院')) return `你已就任${n}院长`;
+    if (n.includes('系')) return `你已就任${n}主任`;
+    return `你已就任${n}负责人`;
+}
+
 function v2PushMail(text) {
     v2.messages.push({ text, turn: v2.totalMonth });
 }
@@ -236,7 +244,7 @@ function v2RenderSetup() {
             app.innerHTML = `<div class="page-transition-in" style="max-width:480px;margin:auto;">
                 <h2>✍️ 输入你的名字</h2>
                 <div style="margin:20px 0;">
-                    <input id="v2NameInput" class="game-input" placeholder="输入院长姓名" maxlength="10" style="width:100%;box-sizing:border-box;padding:10px;">
+                    <input id="v2NameInput" class="game-input" placeholder="输入姓名" maxlength="10" style="width:100%;box-sizing:border-box;padding:10px;">
                 </div>
                 <button class="btn" onclick="v2ConfirmName()">确认 →</button>
             </div>`;
@@ -296,7 +304,7 @@ function v2InitGame() {
 
     // 初始消息
     const deptName = DEPT_CONFIG[deptType]?.name || '未知院系';
-    v2PushMail(`📋 欢迎到任！你已就任${deptName}院长。`);
+    v2PushMail(`📋 欢迎到任！${v2FormatAssumeOfficeLine(deptName)}。`);
     v2PushMail('📌 提示：每月至少排1项日常+1项重点方可执行月度。');
 
     v2.availableDays = v2CalcAvailableDays();
