@@ -384,20 +384,15 @@ input, select, textarea, button {
     font-family: inherit;
 }
 
-html {
-    height: 100%;
-}
 body {
     background: #0f1419;
     color: #c8e0d8;
     font-family: 'Fusion Pixel 12px Proportional SC', monospace;
     display: flex;
     justify-content: center;
-    align-items: stretch;
-    padding: 8px;
-    min-height: 100%;
-    min-height: 100dvh;
-    font-size: clamp(16px, 4.2vw, 22px);
+    padding: 12px;
+    min-height: 100vh;
+    font-size: 22px;
     line-height: 1.35;
     image-rendering: pixelated;
     -webkit-font-smoothing: none;
@@ -405,22 +400,6 @@ body {
     text-rendering: optimizeSpeed;
 }
 .game-container { max-width: 640px; width: 100%; background: #1a2632; border-radius: 4px; padding: 16px; border: 4px solid #5c6f7e; box-shadow: 4px 4px 0 #0a0e12; }
-/* 主游戏界面：占满视口高度、避免整页滚动 */
-body:has(.game-container .play-container) {
-    overflow: hidden;
-    height: 100dvh;
-    max-height: 100dvh;
-    padding: 6px;
-    box-sizing: border-box;
-}
-.game-container:has(.play-container) {
-    padding: 8px 10px;
-    max-height: calc(100dvh - 12px);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
 h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
 .term-badge { background: #f39c12; color: #1e272e; padding: 4px 14px; border-radius: 20px; font-weight: bold; display: inline-block; margin-bottom: 10px; }
 .stage-badge { background: #4b6584; color: #dfe6e9; padding: 4px 12px; border-radius: 20px; font-weight: bold; display: inline-block; margin: 0 0 10px 8px; font-size: 0.9em; }
@@ -430,26 +409,7 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
 .stat-name { color: #a0b4c7; }
 .stat-val { font-weight: bold; color: #f8c291; margin-left: 4px; }
 
-/* ========== 主界面（play-*）：横向数值条 + 双栏在视口内滚动 ========== */
-.play-container {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-.play-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 8px;
-    flex-shrink: 0;
-}
-.play-header > div:first-child {
-    min-width: 0;
-    flex: 1;
-}
+/* ========== 主界面状态栏：五项横向一排 ========== */
 .play-stats {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -458,7 +418,6 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
     background: #141c24;
     border: 2px solid #3d5166;
     border-radius: 2px;
-    flex-shrink: 0;
     width: 100%;
     box-sizing: border-box;
 }
@@ -481,58 +440,6 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
     margin-left: 0;
     font-size: clamp(0.76rem, 2.6vw, 0.92em);
     line-height: 1.1;
-}
-.play-info-bar {
-    flex-shrink: 0;
-    font-size: clamp(0.68rem, 2.3vw, 0.84em);
-    line-height: 1.25;
-    color: #b0cec4;
-    padding: 2px 0;
-}
-.play-progress {
-    flex-shrink: 0;
-    height: 3px;
-    background: #1e2b3c;
-    margin: 0 2px;
-    border-radius: 2px;
-    overflow: hidden;
-}
-.play-progress-inner {
-    height: 100%;
-    background: linear-gradient(90deg, #4a9eff, #6bc9ff);
-    border-radius: 2px;
-    transition: width 0.3s;
-}
-.play-body {
-    display: grid;
-    grid-template-columns: 1.12fr 0.88fr;
-    gap: 8px;
-    min-height: 0;
-    flex: 1 1 0;
-    overflow: hidden;
-    align-content: stretch;
-}
-.play-left,
-.play-right {
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-}
-.play-left .schedule-queue {
-    max-height: min(92px, 20vh);
-}
-.play-tabs .btn.tab-active {
-    border-color: #f5cd79;
-    background: #2a4f5f;
-    color: #f5cd79;
-}
-.btn.small {
-    width: auto;
-    margin: 0;
-    padding: 6px 10px;
-    font-size: 0.82em;
-    text-align: center;
 }
 
 .story-wrap { margin: 12px 0; }
@@ -601,17 +508,7 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
 .profile-box { background: #1e2b3c; border: 1px solid #4b6584; border-radius: 10px; padding: 12px; margin-top: 10px; line-height: 1.7; }
 .setup-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-bottom: 6px; }
 .btn.compact { width: auto; text-align: center; padding: 8px 10px; font-size: 0.86em; }
-.message-board,
-.msg-board {
-    background: #141c24;
-    border-radius: 2px;
-    border: 2px solid #3d5166;
-    padding: 6px 8px;
-    margin-top: 6px;
-    max-height: min(100px, 24vh);
-    overflow-y: auto;
-    font-size: 0.88em;
-}
+.message-board { background: #141c24; border-radius: 2px; border: 2px solid #3d5166; padding: 8px; margin-top: 10px; max-height: 120px; overflow-y: auto; }
 .msg-item { font-size: 0.82em; color: #b0cec4; border-bottom: 1px dashed #2a3f4f; padding: 4px 0; line-height: 1.35; }
 .msg-item:last-child { border-bottom: none; }
 .staff-row { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
@@ -736,9 +633,6 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
 }
 
 @media (max-width: 560px) {
-    .play-body {
-        grid-template-columns: 1fr;
-    }
     .play-stats,
     .exec-stats {
         gap: 2px;

@@ -429,8 +429,8 @@ function v2RenderPlaying() {
             <span style="color:#7f9aab;font-size:0.78em;margin-left:6px;">(总月${v2.totalMonth})</span>
             ${bgHeaderHtml}</div>
             <div style="display:flex;gap:6px;">
-                <button class="btn small" onclick="v2ShowMenu()" style="font-size:0.78em;">☰ 菜单</button>
-                <button class="btn small" onclick="v2ShowAchievements()" style="font-size:0.78em;">🏆 成就</button>
+                <button class="btn" onclick="v2ShowMenu()" style="width:auto;margin:0;font-size:0.78em;">☰ 菜单</button>
+                <button class="btn" onclick="v2ShowAchievements()" style="width:auto;margin:0;font-size:0.78em;">🏆 成就</button>
             </div>
         </div>
         <div class="play-stats" id="v2PlayStats">
@@ -454,19 +454,16 @@ function v2RenderPlaying() {
                 <div class="staff-panel" id="v2StaffPanel">
                     <div style="color:#7f9aab;font-size:0.82em;">合上管理层面板以查看更多行动</div>
                 </div>
-                <div class="msg-board" id="v2MessageBoard"></div>
+                <div class="message-board" id="v2MessageBoard"></div>
             </div>
         </div>
     </div>`;
 
-    // 进度条（样式见 .play-progress / .play-progress-inner）
+    // 进度条
     const progressPercent = remaining <= 0 ? 100 : Math.round((queueDays / (queueDays + remaining)) * 100);
     const progressBar = document.createElement('div');
-    progressBar.className = 'play-progress';
-    const progressInner = document.createElement('div');
-    progressInner.className = 'play-progress-inner';
-    progressInner.style.width = `${Math.min(progressPercent, 100)}%`;
-    progressBar.appendChild(progressInner);
+    progressBar.style.cssText = `height:3px;background:#1e2b3c;margin:2px 10px;border-radius:2px;`;
+    progressBar.innerHTML = `<div style="width:${Math.min(progressPercent, 100)}%;height:100%;background:linear-gradient(90deg,#4a9eff,#6bc9ff);border-radius:2px;transition:width 0.3s;"></div>`;
     document.querySelector('.play-info-bar')?.after(progressBar);
 
     v2RenderQueue();
