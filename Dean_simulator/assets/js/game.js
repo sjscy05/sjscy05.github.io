@@ -444,17 +444,13 @@ function v2RenderPlaying() {
             <span>⏳ 本月可用 <strong>${remaining}</strong> 天 | 已排程 <strong>${queueDays}</strong> 天 | 精力 <strong>${v2.energy}</strong>%</span>
         </div>
         <div class="play-body">
-            <div class="play-left">
-                <div id="v2ActionArea">
-                    <div id="v2ActionTabs"></div>
-                    <div id="v2ActionTabContent"></div>
-                </div>
+            <div id="v2ActionArea">
+                <div id="v2ActionTabs"></div>
+                <div id="v2ActionTabContent"></div>
             </div>
-            <div class="play-right">
-                <div class="staff-panel" id="v2StaffPanel">
-                    <div style="color:#7f9aab;font-size:0.82em;">合上管理层面板以查看更多行动</div>
-                </div>
-                <div class="message-board" id="v2MessageBoard"></div>
+            <div class="message-board" id="v2MessageBoard"></div>
+            <div class="staff-panel" id="v2StaffPanel">
+                <div style="color:#7f9aab;font-size:0.82em;">点击展开「核心管理层」</div>
             </div>
         </div>
     </div>`;

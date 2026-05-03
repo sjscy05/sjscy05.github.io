@@ -442,6 +442,17 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
     line-height: 1.1;
 }
 
+/* 主区单列：排程/行动 → 邮件信息 → 管理层，无左右分栏 */
+.play-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    width: 100%;
+}
+.play-body .message-board {
+    margin-top: 0;
+}
+
 .story-wrap { margin: 12px 0; }
 /* 向导：院系 / 培养方案 / 难度选项卡片（game.js 内联 onclick 依赖 window.v2Select*） */
 .dept-option {
