@@ -643,6 +643,26 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
     transform: translateY(0);
 }
 
+.v2-save-toast {
+    min-width: 200px;
+    max-width: min(340px, calc(100vw - 24px));
+    background: rgba(18, 42, 35, 0.96);
+    border: 2px solid #2a9d7a;
+    color: #c8e0d8;
+    padding: 10px 12px;
+    font-size: 0.84em;
+    line-height: 1.35;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.22s ease, transform 0.22s ease;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+}
+.v2-save-toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
 @media (max-width: 560px) {
     .play-stats,
     .exec-stats {

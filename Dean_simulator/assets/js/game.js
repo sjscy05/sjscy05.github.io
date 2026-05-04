@@ -3,7 +3,7 @@ import {
     INITIAL_RELATION, BACKGROUND_POOL, STAFF_TEMPLATES, STAFF_PERSONA_POOL,
     DEPT_CONFIG, CURRICULUM_PASSIVE, OFFICE_DECOR, TITLE_RULES, ACHIEVEMENTS,
     DIFFICULTY_PRESETS, STUDENT_ARCHETYPES
-} from './config.js?v=savesfix';
+} from './config.js?v=saveui';
 import {
     STUDENT_COMMENTS, TEACHER_COMMENTS, LEADERSHIP_COMMENTS,
     GENERIC_RANDOM_EVENTS, REAL_UNIVERSITY_EVENTS, PET_EVENTS,
@@ -133,24 +133,53 @@ function v2PushMail(text) {
 }
 
 // ========== 存档 ==========
+function v2GetSaveMeta(slot) {
+    const raw = localStorage.getItem('dean_sim_save_' + slot);
+    if (!raw) return null;
+    try {
+        const d = JSON.parse(raw);
+        return {
+            savedAt: d._savedAt,
+            semester: d.semester,
+            month: d.month,
+            totalMonth: d.totalMonth,
+            playerName: d.playerName,
+            deptType: d.deptType
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+function v2FormatSaveSummary(meta) {
+    if (!meta || meta.semester == null) return '（空）';
+    const dept = DEPT_CONFIG[meta.deptType]?.name || '院系';
+    const name = (meta.playerName || '').trim() || '未命名';
+    const t = meta.savedAt
+        ? new Date(meta.savedAt).toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '';
+    return `第${meta.semester}学期 第${meta.month}月 · ${name} · ${dept}${t ? ' · ' + t : ''}`;
+}
+
 function v2SaveGame(slot, opts) {
     if (slot === undefined || slot === null || slot === '') slot = 'auto';
     const silent = opts && opts.silent;
+    const fromMenu = opts && opts.fromMenu;
     const data = JSON.parse(JSON.stringify(v2));
     data._saveVersion = 2;
+    data._savedAt = Date.now();
     const json = JSON.stringify(data);
     try {
         localStorage.setItem('dean_sim_save_' + slot, json);
-        // 手动存档位同步写入 auto，便于首页「继续」与浏览器缓存迁移后仍能读到进度
-        if (String(slot) !== 'auto') {
-            localStorage.setItem('dean_sim_save_auto', json);
-        }
-        if (!silent) {
-            v2PushMail(`📁 已存档（${slot}）`);
+        if (!silent && !fromMenu) {
+            v2PushMail(`📁 已存档（槽位 ${slot}）`);
             v2RenderMessages();
+            if (String(slot) !== 'auto') v2QueueSaveToast(`已写入手动存档 ${slot}`);
         }
+        return true;
     } catch (e) {
         alert('存档失败：' + e.message);
+        return false;
     }
 }
 
@@ -166,6 +195,7 @@ function v2ApplyLoadedSave(data) {
     Object.assign(v2, defaults);
     const snapshot = { ...data };
     delete snapshot._saveVersion;
+    delete snapshot._savedAt;
     Object.assign(v2, snapshot);
     v2.flags = { ...v2DefaultState().flags, ...(data.flags && typeof data.flags === 'object' ? data.flags : {}) };
     const baseRel = JSON.parse(JSON.stringify(INITIAL_RELATION));
@@ -183,6 +213,8 @@ function v2ApplyLoadedSave(data) {
     v2.executionRandomEvents = null;
     v2.executionPendingEvent = null;
     v2.gameOver = false;
+    delete v2._savedAt;
+    delete v2._saveVersion;
 }
 
 function v2LoadGame(slot) {
@@ -1460,14 +1492,30 @@ function v2Typewriter(text, targetId, skipBtnId, onComplete) {
 // ========== 菜单 ==========
 function v2ShowMenu() {
     const app = document.getElementById('app');
-    app.innerHTML = `<div class="page-transition-in" style="max-width:500px;margin:auto;">
+    const autoMeta = v2GetSaveMeta('auto');
+    const autoSum = v2FormatSaveSummary(autoMeta);
+    const manualBlocks = [1, 2, 3].map((i) => {
+        const m = v2GetSaveMeta(i);
+        const sum = v2FormatSaveSummary(m);
+        return `<div style="background:#141c24;border:2px solid #3d5166;border-radius:2px;padding:10px;margin-bottom:10px;">
+            <div style="color:#b0cec4;font-size:0.8em;margin-bottom:8px;line-height:1.4;"><strong style="color:#f5cd79;">手动槽 ${i}</strong><br>${sum}</div>
+            <button type="button" class="btn" onclick="v2SaveManualFromMenu(${i})" style="text-align:center;width:100%;margin-bottom:4px;">💾 保存到槽 ${i}</button>
+            <button type="button" class="btn secondary" onclick="v2LoadGame(${i})" style="text-align:center;width:100%;"${m ? '' : ' disabled'}>📂 读取槽 ${i}</button>
+        </div>`;
+    }).join('');
+    app.innerHTML = `<div class="page-transition-in" style="max-width:520px;margin:auto;">
         <h2>☰ 菜单</h2>
-        <div style="margin:20px 0;">
-            <div style="color:#8fa8b8;font-size:0.82em;margin-bottom:8px;">📁 存档管理</div>
-            ${[1,2,3].map(i => `<button class="btn" onclick="v2SaveGame(${i})" style="text-align:center;width:100%;margin-bottom:4px;">保存到存档 ${i}</button>`).join('')}
-            ${[1,2,3].map(i => `<button class="btn secondary" onclick="v2LoadGame(${i})" style="text-align:center;width:100%;margin-bottom:4px;">读取存档 ${i}</button>`).join('')}
-            <button class="btn warning" onclick="v2RenderPlaying()" style="text-align:center;margin-top:8px;">◀ 返回游戏</button>
-            <button class="btn warning" onclick="if(confirm('确定重新开始？'))v2RestartNewGame()" style="text-align:center;">🔄 重新开始</button>
+        <div style="margin:16px 0;">
+            <div style="color:#f5cd79;font-size:0.9em;margin-bottom:6px;">⚡ 自动存档（1）</div>
+            <div style="font-size:0.78em;color:#b0cec4;margin-bottom:8px;line-height:1.45;">${autoSum}</div>
+            <div style="font-size:0.72em;color:#7f9aab;margin-bottom:8px;line-height:1.4;">每月结算、新开局、跳过本月时自动写入；与下方手动槽互不覆盖。</div>
+            <button type="button" class="btn secondary" onclick="v2LoadGame('auto')" style="text-align:center;width:100%;margin-bottom:14px;"${autoMeta ? '' : ' disabled'}>📂 读取自动存档</button>
+
+            <div style="color:#f5cd79;font-size:0.9em;margin-bottom:6px;">💾 手动存档（3）</div>
+            ${manualBlocks}
+
+            <button type="button" class="btn warning" onclick="v2RenderPlaying()" style="text-align:center;margin-top:8px;">◀ 返回游戏</button>
+            <button type="button" class="btn warning" onclick="if(confirm('确定重新开始？'))v2RestartNewGame()" style="text-align:center;">🔄 重新开始</button>
         </div>
     </div>`;
 }
@@ -1554,6 +1602,23 @@ ${desc ? `<span class="v2-ach-toast-desc">${safe(desc)}</span>` : ''}`;
     }, hideMs);
 }
 
+/** 存档成功简短提示（菜单保存、非静默手动存） */
+function v2QueueSaveToast(message) {
+    const host = v2EnsureToastHost();
+    const el = document.createElement('div');
+    el.className = 'v2-save-toast';
+    el.setAttribute('role', 'status');
+    const span = document.createElement('span');
+    span.textContent = message;
+    el.appendChild(span);
+    host.appendChild(el);
+    requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('show')));
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 280);
+    }, 2600);
+}
+
 // ========== 暴露全局接口 ==========
 // ES 模块内联 onclick 只能调用 window 上的函数；向导步进/选项须在此注册，避免仅在某次 v2RenderSetup 内赋值导致偶发未定义
 window.v2WizardAfterIntro = () => { _wizardStep = 1; v2RenderSetup(); };
@@ -1620,6 +1685,12 @@ window.v2HasSave = v2HasSave;
 window.v2LoadContinue = () => {
     const slot = v2GetContinueSlot();
     if (slot != null) v2LoadGame(slot);
+};
+window.v2SaveManualFromMenu = (i) => {
+    if (v2SaveGame(i, { fromMenu: true })) {
+        v2QueueSaveToast(`手动槽 ${i} 已保存`);
+        v2ShowMenu();
+    }
 };
 window.v2InitGame = v2InitGame;
 window.v2Typewriter = v2Typewriter;
