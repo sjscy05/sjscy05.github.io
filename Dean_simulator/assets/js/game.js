@@ -3,7 +3,7 @@ import {
     INITIAL_RELATION, BACKGROUND_POOL, STAFF_TEMPLATES, STAFF_PERSONA_POOL,
     DEPT_CONFIG, CURRICULUM_PASSIVE, OFFICE_DECOR, TITLE_RULES, ACHIEVEMENTS,
     DIFFICULTY_PRESETS, STUDENT_ARCHETYPES
-} from './config.js';
+} from './config.js?v=firstterm';
 import {
     STUDENT_COMMENTS, TEACHER_COMMENTS, LEADERSHIP_COMMENTS,
     GENERIC_RANDOM_EVENTS, REAL_UNIVERSITY_EVENTS, PET_EVENTS,
@@ -1099,21 +1099,20 @@ function v2ExecFinish() {
     if (v2.studentEval > prevEvalForStreak) v2.admissionStreak += 1;
     else v2.admissionStreak = 0;
     v2.prevEval = v2.studentEval;
-    v2CheckAchievements();
-    v2UpdateStats();
     v2.carryoverDays = Math.max(0, v2.usedDays - v2.availableDays);
 
-    // 进度到下个月
+    // 进度到下个月（须先更新 semester，成就如「初出茅庐」才能在对的时机判定）
     v2.totalMonth += 1;
     v2.month = (v2.totalMonth % 3) + 1;
     v2.flags.termPersonalStoryUsed = false;
 
-    // 检查学期结束弧线
     const newTerm = Math.floor(v2.totalMonth / 3) + 1;
     if (newTerm > v2.semester) {
         v2.semester = newTerm;
-        // 学期过渡回顾
     }
+
+    v2CheckAchievements();
+    v2UpdateStats();
 
     // 重置月度资源
     v2.energy = 100;
@@ -1229,6 +1228,8 @@ function v2EndTerm() {
     v2.month = (v2.totalMonth % 3) + 1;
     const newTerm = Math.floor(v2.totalMonth / 3) + 1;
     if (newTerm > v2.semester) v2.semester = newTerm;
+
+    v2CheckAchievements();
 
     v2.flags.termPersonalStoryUsed = false;
     v2.energy = 100;

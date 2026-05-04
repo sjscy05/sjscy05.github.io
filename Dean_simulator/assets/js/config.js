@@ -158,6 +158,14 @@ export const TITLE_RULES = [
 ];
 
 export const ACHIEVEMENTS = [
+    /** 素材库 §三-1：完成第一个学期（学期计数≥2 表示已进入第二学期） */
+    {
+        id: 'first_term_done',
+        name: '🎓 初出茅庐',
+        desc: '完成第一个学期。你明白了系主任不好当。',
+        points: 3,
+        cond: (g) => (g.semester ?? 1) >= 2
+    },
     /** 条件在 v2ExecFinish 内单独判定（需月初经费与队列快照），此处不设 cond */
     { id: 'low_fund_meeting', name: '逆风推进', desc: '月初经费低于10仍完成至少一项重点项目', points: 4 },
     {
