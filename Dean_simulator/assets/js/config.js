@@ -137,13 +137,28 @@ export const DEPT_CONFIG = {
 };
 
 export const CURRICULUM_PASSIVE = {
-    theoretical: { name: '理论扎实型', academicRep: 2 },
-    applied: { name: '应用技能型', studentEval: 2 },
-    balanced: { name: '均衡培养', academicRep: 1, studentEval: 0 },
-    research: { name: '科研驱动型', academicRep: 3, funds: -1 },
-    industry: { name: '产学对接型', funds: 2, studentEval: 2, adminRep: 1 },
-    global: { name: '国际视野型', academicRep: 1, studentEval: 2, adminRep: 1 }
+    theoretical: { name: '理论扎实型', academicRep: 1 },
+    applied: { name: '应用技能型', studentEval: 1 },
+    balanced: { name: '均衡培养', academicRep: 0, studentEval: 0 },
+    research: { name: '科研驱动型', academicRep: 2, funds: -1 },
+    industry: { name: '产学对接型', funds: 1, studentEval: 1, adminRep: 1 },
+    global: { name: '国际视野型', academicRep: 1, studentEval: 1, adminRep: 1 }
 };
+
+/** 排程里「日常/重点」任务结算时，对正数属性变化乘此系数，拉长好结局周目；负数（如扣经费）不变。 */
+export const TASK_EFFECT_GAIN_MULT = 0.82;
+
+export function scaleTaskEffectGains(effect) {
+    if (!effect) return effect;
+    const out = { ...effect };
+    for (const k of Object.keys(out)) {
+        const v = out[k];
+        if (typeof v === 'number' && v > 0) {
+            out[k] = Math.round(v * TASK_EFFECT_GAIN_MULT);
+        }
+    }
+    return out;
+}
 
 export const OFFICE_DECOR = [
     { id: 'coffee', name: '咖啡机', cost: 10, time: 2, effect: { monthDays: 2 }, desc: '每月可用天数 +2。' },
@@ -158,15 +173,23 @@ export const TITLE_RULES = [
 ];
 
 export const ACHIEVEMENTS = [
-    /** 素材库 §三-1：完成第一个学期（学期计数≥2 表示已进入第二学期） */
+    /** 月度结算后 totalMonth≥1 即达成（完成上任后第一个完整工作月） */
+    {
+        id: 'first_month_done',
+        name: '🌱 站稳脚跟',
+        desc: '顺利完成上任后第一个完整工作月。',
+        points: 2,
+        cond: (g) => (g.totalMonth ?? 0) >= 1
+    },
+    /** 连续满 3 个游戏月后 semester 进入 2（界面上的「第2学期」） */
     {
         id: 'first_term_done',
         name: '🎓 初出茅庐',
-        desc: '完成第一个学期。你明白了系主任不好当。',
+        desc: '完成游戏内第一个完整学期（连续 3 个月）。你明白了系主任不好当。',
         points: 3,
         cond: (g) => (g.semester ?? 1) >= 2
     },
-    /** 条件在 v2ExecFinish 内单独判定（需月初经费与队列快照），此处不设 cond */
+    /** 条件在 v2ExecFinish 内单独判定（月初经费与队列快照）；不设 cond，由 v2TryUnlockAchievementById 解锁 */
     { id: 'low_fund_meeting', name: '逆风推进', desc: '月初经费低于10仍完成至少一项重点项目', points: 4 },
     {
         id: 'all_loyal',

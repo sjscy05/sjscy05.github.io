@@ -245,11 +245,10 @@ export const PET_EVENTS = [
         title: '流浪橘猫「学报」收养',
         text: '一只橘色流浪猫已经在学院楼下徘徊了一周。学生们给它起名「学报」，喂了它好几天。今天它直接躺在了学院大门口，似乎在等一个正式收留的决定。',
         choices: [
-            choice('同意收养并在办公室安家', 3, { morale: 4, studentEval: 5 }, '「学报」正式成为学院一员。学生们在论坛刷了一整晚庆祝。'),
+            choice('同意收养并在办公室安家', 3, { morale: 4, studentEval: 5 }, '「学报」正式成为学院一员。学生们在论坛刷了一整晚庆祝。', { petAdopt: 'journal_cat' }),
             choice('联系学校后勤带走处理', 2, { studentEval: -3, morale: -2 }, '学生们很失望，论坛上出现了「抓猫门」话题。')
         ],
-        isPet: true,
-        petAdopt: 'journal_cat'
+        isPet: true
     },
     {
         id: 'P2',
@@ -267,18 +266,17 @@ export const PET_EVENTS = [
         title: '校犬「黑板」养老',
         text: '校园里那匹岁数很大的黑狗「黑板」最近走路明显慢了。几个学生联名写信希望学院能给校犬更好的养老条件。',
         choices: [
-            choice('拨出专项经费改善狗舍', 4, { funds: -3, morale: 4, studentEval: 4 }, '你为「黑板」翻新了狗舍，学生自发成立了校园动物关爱小组。'),
+            choice('拨出专项经费改善狗舍', 4, { funds: -3, morale: 4, studentEval: 4 }, '你为「黑板」翻新了狗舍，学生自发成立了校园动物关爱小组。', { petAdopt: 'board_dog' }),
             choice('让后勤日常照顾', 2, { studentEval: -1 }, '后勤做了基础改善，但学生们觉得敷衍。')
         ],
-        isPet: true,
-        requireEvent: '校庆相关'
+        isPet: true
     },
     {
         id: 'P4',
         title: '仓鼠「光子」收养',
         text: '实验鼠繁殖计划出了点小问题：多出来的一只仓鼠被学生当作「实验室团宠」悄悄养了下来，现在面临被处理的局面。',
         choices: [
-            choice('特批收养，命名「光子」', 3, { morale: 3, studentEval: 3 }, '「光子」在实验室里有了自己的小笼子，学生们给它做了实验服造型小衣服。'),
+            choice('特批收养，命名「光子」', 3, { morale: 3, studentEval: 3 }, '「光子」在实验室里有了自己的小笼子，学生们给它做了实验服造型小衣服。', { petAdopt: 'photon' }),
             choice('按规定处理', 1, { studentEval: -2, morale: -2 }, '你按流程处理了，但学生们非常不舍。')
         ],
         isPet: true,
@@ -289,11 +287,55 @@ export const PET_EVENTS = [
         title: '陆龟「评估」越狱',
         text: '据说前任院长养的一只陆龟「评估」已经在这栋楼里活了十几年。今天它又不见了——上次它消失三天后在档案室的纸箱里被发现。',
         choices: [
-            choice('发动全员寻找', 3, { morale: 2, studentEval: 3 }, '全院师生大搜索，最终在器材室找到。大家给「评估」加了一条追踪标签。'),
+            choice('发动全员寻找', 3, { morale: 2, studentEval: 3 }, '全院师生大搜索，最终在器材室找到。大家给「评估」加了一条追踪标签。', { petAdopt: 'tortoise' }),
             choice('等它自己出来', 1, { adminRep: -1 }, '三天后龟自己爬出来了，但期间你错过了几次它可能捣乱的机会。')
         ],
         isPet: true,
         birthing: true
+    }
+];
+
+/** 结局钩子：举报链、网红梗、李立诚冲突、约谈辞职、忠诚打击（供随机突发池抽取） */
+export const ENDING_HOOK_EVENTS = [
+    {
+        title: '毕业照表情包疯传',
+        text: '学生会把你毕业照做成了表情包合集，你是封面主角，评论区全是「院长 yyds」。',
+        choices: [
+            choice('自嘲转发并点赞', 2, { studentEval: 5, morale: 2 }, '学生惊呼院长竟然会自黑，话题阅读量当晚破万。', { memeSelfDeprecating: true }),
+            choice('联系学生会要求下架', 3, { studentEval: -2, adminRep: 2 }, '表情包下架了，有人说你「玩不起」。')
+        ]
+    },
+    {
+        title: '匿名举报·论文署名疑云',
+        text: '匿名邮件举报某位教师的论文署名存在争议。校办要求你「先内部处理再决定是否上报」。',
+        choices: [
+            choice('组织公开复查', 5, { adminRep: 2, academicRep: 2, morale: -2 }, '程序透明，调查中难免人心惶惶。', { scandalFair: true }),
+            choice('先冷处理压消息', 2, { studentEval: -2, adminRep: -1 }, '你让团队先别声张，论坛上已经出现了零星帖子。', { scandalSuppress: true })
+        ]
+    },
+    {
+        title: '与李立诚当面争执',
+        text: '学术委员会主任李立诚在会议室拍了桌子：「这笔钱不到位，课题就等于判死刑。」',
+        choices: [
+            choice('当场硬顶回去', 3, { morale: -4, academicRep: -2 }, '争执升级，走廊里都能听见回声。', { lichengConflict: true }),
+            choice('协调折中方案', 4, { funds: -5, academicRep: 4 }, '两边都很累，但暂时保住了合作窗口。')
+        ]
+    },
+    {
+        title: '校领导约谈',
+        text: '周校长发来短信：「下午来我办公室一趟，学院指标我们单独聊。」',
+        choices: [
+            choice('按时前往', 2, { adminRep: 2, morale: -1 }, '校长提醒你要稳住舆情与经费结构，并问你压力大不大。', { principalWarning: true, resignUnlock: true }),
+            choice('委托副院长代为汇报', 2, { adminRep: -1 }, '副院长替你挡了一次火，但校长记住了这事。')
+        ]
+    },
+    {
+        title: '教研室不信任动议',
+        text: '一份匿名稿在教师群里流传，矛头直指你的绩效分配方案。',
+        choices: [
+            choice('请学术主任出面解释', 3, { academicRep: -1, morale: -4 }, '李立诚在教研室解释得口干舌燥，仍有人拍桌子。', { staffLoyalty: { id: 'acad_director', delta: -35 } }),
+            choice('自己开座谈会听意见', 4, { morale: 3, adminRep: 2 }, '吵了一下午，至少把火引到了明面上。')
+        ]
     }
 ];
 
@@ -408,6 +450,7 @@ export function createEventData(options) {
             genericRandomEvents: GENERIC_RANDOM_EVENTS,
             realUniversityEvents: REAL_UNIVERSITY_EVENTS,
             petEvents: PET_EVENTS,
+            endingHookEvents: ENDING_HOOK_EVENTS,
             studentInteractEvents: STUDENT_INTERACT_EVENTS,
             studentComments: STUDENT_COMMENTS,
             teacherComments: TEACHER_COMMENTS,
@@ -438,7 +481,16 @@ export function createEventData(options) {
     ];
     const regularActions = createRegularActions();
 
-    return { fixedEvents, deptSpecialEvents, randomEvents, dailyActions, focusProjects, chainEvents, regularActions };
+    return {
+        fixedEvents,
+        deptSpecialEvents,
+        randomEvents,
+        dailyActions,
+        focusProjects,
+        chainEvents,
+        regularActions,
+        endingHookEvents: ENDING_HOOK_EVENTS
+    };
 }
 
 function createFixedEvents() {

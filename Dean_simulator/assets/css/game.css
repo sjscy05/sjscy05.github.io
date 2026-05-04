@@ -590,11 +590,12 @@ h2 { color: #f5cd79; text-align: center; margin: 0 0 10px; }
 }
 #v2ToastHost {
     position: fixed;
-    top: 12px;
-    left: 12px;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
     z-index: 220;
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 6px;
     pointer-events: none;
 }

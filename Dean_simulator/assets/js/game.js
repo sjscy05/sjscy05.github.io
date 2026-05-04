@@ -2,11 +2,13 @@
 import {
     INITIAL_RELATION, BACKGROUND_POOL, STAFF_TEMPLATES, STAFF_PERSONA_POOL,
     DEPT_CONFIG, CURRICULUM_PASSIVE, OFFICE_DECOR, TITLE_RULES, ACHIEVEMENTS,
-    DIFFICULTY_PRESETS, STUDENT_ARCHETYPES
-} from './config.js?v=balance';
+    DIFFICULTY_PRESETS, STUDENT_ARCHETYPES,
+    scaleTaskEffectGains
+} from './config.js?v=ach1';
 import {
     STUDENT_COMMENTS, TEACHER_COMMENTS, LEADERSHIP_COMMENTS,
     GENERIC_RANDOM_EVENTS, REAL_UNIVERSITY_EVENTS, PET_EVENTS,
+    ENDING_HOOK_EVENTS,
     STUDENT_INTERACT_EVENTS, buildTermEndNarrative, createEventData
 } from './events.js';
 
@@ -49,8 +51,17 @@ function v2DefaultState() {
             reforms: 0,
             termPersonalStoryUsed: false,
             adoptedPets: [],
-            metStudents: []
+            metStudents: [],
+            scandalSuppressStage: 0,
+            academicDropStreak: 0,
+            resignUnlocked: false,
+            principalWarning: false,
+            memeSelfDeprecating: false,
+            lichengConflictCount: 0
         },
+
+        runStats: { total: 0, research: 0, enterprise: 0, financeLine: 0 },
+        _prevTermEndAcademic: null,
 
         actionQueue: [],
         messages: [],
@@ -111,6 +122,85 @@ function v2CalcAvailableDays() {
         base += 2;
     }
     return base;
+}
+
+function v2ApplyChoiceMeta(choice) {
+    if (!choice) return;
+    if (choice.petAdopt) {
+        if (!Array.isArray(v2.flags.adoptedPets)) v2.flags.adoptedPets = [];
+        if (!v2.flags.adoptedPets.includes(choice.petAdopt)) v2.flags.adoptedPets.push(choice.petAdopt);
+    }
+    if (choice.scandalFair) {
+        v2.flags.scandalSuppressStage = 0;
+    }
+    if (choice.scandalSuppress) {
+        v2.flags.scandalSuppressStage = (v2.flags.scandalSuppressStage || 0) + 1;
+    }
+    if (choice.memeSelfDeprecating) {
+        v2.flags.memeSelfDeprecating = true;
+    }
+    if (choice.lichengConflict) {
+        v2.flags.lichengConflictCount = (v2.flags.lichengConflictCount || 0) + 1;
+    }
+    if (choice.principalWarning) {
+        v2.flags.principalWarning = true;
+    }
+    if (choice.resignUnlock) {
+        v2.flags.resignUnlocked = true;
+    }
+    if (choice.staffLoyalty && choice.staffLoyalty.id) {
+        const st = v2.staff && v2.staff.find((s) => s.id === choice.staffLoyalty.id);
+        if (st) {
+            st.loyalty = clamp(st.loyalty + (choice.staffLoyalty.delta || 0), 0, 100);
+        }
+    }
+}
+
+function v2BumpRunStats(task) {
+    if (!task || !task.id) return;
+    if (!v2.runStats) {
+        v2.runStats = { total: 0, research: 0, enterprise: 0, financeLine: 0 };
+    }
+    v2.runStats.total += 1;
+    if (task.id === 'research') v2.runStats.research += 1;
+    if (task.id === 'enterprise') v2.runStats.enterprise += 1;
+    if (task.id === 'finance') v2.runStats.financeLine += 1;
+}
+
+function v2HasIdealistTrait() {
+    return (
+        Array.isArray(v2.backgroundTraits) && v2.backgroundTraits.some((t) => t && t.tag === '理想主义者')
+    );
+}
+
+function v2HasCatOrDogPet() {
+    const p = v2.flags.adoptedPets || [];
+    return p.includes('journal_cat') || p.includes('board_dog');
+}
+
+/** 办公室之神：猫+狗+陆龟，非数学/计算机系另需「光子」 */
+function v2OfficeGodMet() {
+    const p = v2.flags.adoptedPets || [];
+    const has = (id) => p.includes(id);
+    if (!has('journal_cat') || !has('board_dog') || !has('tortoise')) return false;
+    const csMath = v2.deptType === 'cs' || v2.deptType === 'math';
+    if (csMath) return true;
+    return has('photon');
+}
+
+function v2TaoliConditionsMet() {
+    return v2.studentEval >= 92 && v2.morale >= 82 && v2.academicRep >= 76;
+}
+
+function v2ResearchRatio() {
+    const rs = v2.runStats || { total: 0, research: 0 };
+    return rs.total > 0 ? rs.research / rs.total : 0;
+}
+
+function v2CorpActivityRatio() {
+    const rs = v2.runStats || { total: 0, enterprise: 0, financeLine: 0 };
+    if (rs.total <= 0) return 0;
+    return ((rs.enterprise || 0) + (rs.financeLine || 0)) / rs.total;
 }
 
 // ========== 消息/邮件系统 ==========
@@ -236,6 +326,7 @@ function v2LoadGame(slot) {
         v2ApplyLoadedSave(data);
         v2UpdateStats();
         v2PushMail('📂 读档完成');
+        v2CheckAchievements();
         v2RenderPlaying();
     } catch (e) {
         alert('读档失败：状态恢复出错（可尝试新开一局）。');
@@ -597,10 +688,19 @@ function v2RenderActionTabs() {
     </div>
     <div id="v2ActionTabContent"></div>
     <div class="hint-line">💡 每月需要至少排1项日常+1项重点。</div>
-    <div style="display:flex;gap:6px;margin-top:6px;">
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
         <button class="btn" id="v2ExecBtn" onclick="v2ExecuteMonth()" ${v2.actionQueue.filter(t=>t.type==='daily').length===0||v2.actionQueue.filter(t=>t.type==='focus').length===0?'disabled':''}>▶ 执行本月排程</button>
         <button class="btn warning" onclick="v2EndTerm()" style="text-align:center;">⏭ 跳过剩余天数结束本月</button>
-    </div>`;
+    </div>
+    ${
+        v2.semester >= 6 &&
+        v2.semester <= 8 &&
+        v2.totalMonth < 24 &&
+        (v2.flags.resignUnlocked || (v2.flags.lichengConflictCount || 0) >= 3)
+            ? `<div style="margin-top:8px;"><button type="button" class="btn secondary" onclick="v2OfferResign()">👔 申请辞职（急流勇退）</button>
+        <span style="color:#7f9aab;font-size:0.78em;margin-left:8px;">第6–8学期且已解锁（约谈或与李立诚冲突满三次）</span></div>`
+            : ''
+    }`;
 
     tabContainer.innerHTML = html;
     v2ShowActionTab(v2._activeTab);
@@ -753,6 +853,7 @@ function v2StaffTalk(idx) {
     v2.energy -= 10;
     staff.loyalty = clamp(staff.loyalty + Math.floor(Math.random() * 8) + 3, 0, 100);
     v2PushMail(`💬 与 ${staff.name} 谈心，忠诚提升至 ${staff.loyalty}`);
+    v2CheckAchievements();
     v2RenderPlaying();
 }
 
@@ -804,7 +905,8 @@ function v2ExecuteMonth() {
         v2.executionIndex = 0;
         v2.executionLogs = [];
         // 从多个事件池抽取随机事件（独立通用池 + 真实校园池）
-        const allRandomEvents = [...GENERIC_RANDOM_EVENTS, ...REAL_UNIVERSITY_EVENTS];
+        const petOk = PET_EVENTS.filter((ev) => !ev.requireDept || (ev.requireDept && ev.requireDept.includes(v2.deptType)));
+        const allRandomEvents = [...GENERIC_RANDOM_EVENTS, ...REAL_UNIVERSITY_EVENTS, ...petOk, ...ENDING_HOOK_EVENTS];
         const shuffled = allRandomEvents.sort(() => Math.random() - 0.5);
         v2.executionRandomEvents = shuffled.slice(0, Math.min(3, shuffled.length));
         v2.executionRandomEventIdx = 0;
@@ -1114,6 +1216,7 @@ function v2ExecShowIndependentEvent(ev) {
             const choice = ev.choices[idx];
             v2.executionLogs.push(choice.feedback);
             v2ApplyEffect(choice.effect ? choice.effect : (choice.effects || {}));
+            v2ApplyChoiceMeta(choice);
             v2UpdateStats();
             v2ExecRefreshStatValues(oldStats);
 
@@ -1166,21 +1269,9 @@ function v2ExecFinish() {
     v2ExecSkipClick = null;
     const fundsBefore = v2.funds;
     const queueSnap = v2.pendingExecutionQueue;
-    const meta = v2MetaLoad();
-    meta.ach = meta.ach || [];
-
-    if (fundsBefore < 10 && queueSnap && queueSnap.some(t => t.type === 'focus')) {
-        if (!meta.ach.includes('low_fund_meeting')) {
-            const a = ACHIEVEMENTS.find(x => x.id === 'low_fund_meeting');
-            if (a) {
-                meta.ach.push('low_fund_meeting');
-                meta.points = (meta.points || 0) + a.points;
-                v2PushMail(`成就解锁：${a.name}（+${a.points}周目点）`);
-                v2QueueAchievementToast(a.name, a.points, a.desc);
-            }
-        }
+    if (fundsBefore < 10 && queueSnap && queueSnap.some((t) => t.type === 'focus')) {
+        v2TryUnlockAchievementById('low_fund_meeting');
     }
-    v2MetaSave(meta);
     const passive = CURRICULUM_PASSIVE[v2.curriculum] || CURRICULUM_PASSIVE.balanced;
     v2ApplyEffect(passive);
     v2UnlockTitles();
@@ -1198,6 +1289,19 @@ function v2ExecFinish() {
     const newTerm = Math.floor(v2.totalMonth / 3) + 1;
     if (newTerm > v2.semester) {
         v2.semester = newTerm;
+    }
+
+    if (v2.totalMonth > 0 && v2.totalMonth % 3 === 0) {
+        const curA = v2.academicRep;
+        if (v2._prevTermEndAcademic != null) {
+            const drop = v2._prevTermEndAcademic - curA;
+            if (drop > 10) {
+                v2.flags.academicDropStreak = (v2.flags.academicDropStreak || 0) + 1;
+            } else {
+                v2.flags.academicDropStreak = 0;
+            }
+        }
+        v2._prevTermEndAcademic = curA;
     }
 
     v2CheckAchievements();
@@ -1259,7 +1363,8 @@ function v2AbortExecution() {
 
 // ========== 任务解析 ==========
 function v2ResolveTask(task) {
-    v2ApplyEffect(task.effect);
+    v2ApplyEffect(scaleTaskEffectGains(task.effect));
+    v2BumpRunStats(task);
     v2PushMail(`✅ 完成：${task.title}`);
 
     const feedbackPool = {
@@ -1317,6 +1422,19 @@ function v2EndTerm() {
     v2.month = (v2.totalMonth % 3) + 1;
     const newTerm = Math.floor(v2.totalMonth / 3) + 1;
     if (newTerm > v2.semester) v2.semester = newTerm;
+
+    if (v2.totalMonth > 0 && v2.totalMonth % 3 === 0) {
+        const curA = v2.academicRep;
+        if (v2._prevTermEndAcademic != null) {
+            const drop = v2._prevTermEndAcademic - curA;
+            if (drop > 10) {
+                v2.flags.academicDropStreak = (v2.flags.academicDropStreak || 0) + 1;
+            } else {
+                v2.flags.academicDropStreak = 0;
+            }
+        }
+        v2._prevTermEndAcademic = curA;
+    }
 
     v2CheckAchievements();
 
@@ -1386,20 +1504,122 @@ function v2CheckEndings() {
     if (v2.morale <= 0) {
         return v2EndWithMessage('😔 众叛亲离\n\n教研室已经空了半个。三位骨干教师提交了调动申请，剩下的人也没有了正常工作状态。校务会上有人公开说：「这个系的管理出了大问题。」\n\n你在走廊里听到有人在小声议论：「这样的领导怎么还没走？」', 'gameover');
     }
-    // 任期结束（8学期 = 24个月）
+    // 丑闻下台（压制举报链 / 学术声望连续下滑）
+    if ((v2.flags.scandalSuppressStage || 0) >= 2 || (v2.flags.academicDropStreak || 0) >= 2) {
+        return v2EndWithMessage(
+            '📰 丑闻下台\n\n调查组进驻学院，翻出了陈年旧账。你因为处理失当成为众矢之的，黯然辞职。校报标题：《院长涉嫌包庇，学术净土蒙尘》。\n\n赵敏将你的离职证明默默归档。',
+            'gameover'
+        );
+    }
+    // 被下属推翻
+    if (v2.staff && v2.staff.some((s) => (s.loyalty ?? 100) <= 0) && v2.morale <= 25) {
+        return v2EndWithMessage(
+            '🔪 被下属推翻\n\n那天早晨，你桌上摆着全体教师的联名信。为首的正是那位曾对你寄予厚望的下属。他冷冷地说：「主任，是你先辜负了大家。」\n\n你收拾好私人物品。陆龟「评估」爬过你脚边，仿佛在道别。',
+            'gameover'
+        );
+    }
+    // 理想破灭（理想主义者 · 第 4 学期末：累计满 12 个月时判定一次）
+    if (
+        v2.totalMonth === 12 &&
+        v2HasIdealistTrait() &&
+        (v2.studentEval < 50 || v2.morale < 40)
+    ) {
+        return v2EndWithMessage(
+            '💔 理想破灭\n\n你曾发誓要重塑大学精神，但无情的现实将理想碾得粉碎。学生在匿名信中骂你「嘴炮」，老教师摇头叹息。你终于写下辞职信，在办公室独自坐到深夜。\n\n窗外，你上任时种下的那盆绿植早已枯死。',
+            'gameover'
+        );
+    }
+
+    if (v2.totalMonth < 24) {
+        // 学术巨擘（优先于高升等声望类）
+        if (v2.academicRep >= 100 && v2ResearchRatio() > 0.6 && v2.funds >= 60) {
+            return v2EndWithMessage(
+                '🔬 学术巨擘\n\n你以惊人效率发表了一系列高水平成果，甚至吸引了国际学术组织的注意。最终，你辞去行政职务，全职回归科研。\n\n李立诚在退休聚餐上说：「你终于做回了自己。」',
+                'ending'
+            );
+        }
+        // 企业明星
+        if (v2.funds >= 95 && v2.academicRep <= 40 && v2CorpActivityRatio() > 0.3) {
+            return v2EndWithMessage(
+                '💼 企业明星\n\n你深谙资本运作，学院账面上富得流油，但学术氛围荡然无存。一家上市企业向你抛出橄榄枝，年薪翻倍。\n\n你离开那天，李立诚没有来送别。学生论坛上有人留言：「院长变成了 CEO。」',
+                'ending'
+            );
+        }
+        // 高升
+        if (v2.academicRep >= 94 && v2.funds >= 84) {
+            return v2EndWithMessage(
+                '🚀 高升结局\n\n你的学术声誉和经费管理能力引起了校领导的注意。在一次闭门会议后，周校长亲自打电话：「上面有一个副校长的位置，我和书记都推荐了你。」\n\n这当然不是终点，但至少证明——你做对了什么。',
+                'ending'
+            );
+        }
+        // 桃李满天下
+        if (v2TaoliConditionsMet()) {
+            return v2EndWithMessage(
+                '🌸 桃李满天下\n\n校友会年度报告上，你的名字被反复提及。学生评价调查中，「推荐院长」的比例达到了历史最高。\n\n一位刚毕业的学生在朋友圈里写道：「如果大学有形状，那大概就是我们院长的样子。」\n\n你看到这条动态时，默默截了图。',
+                'ending'
+            );
+        }
+        // 网红院长（不与桃李同时；需梗事件或猫狗宠物）
+        if (
+            !v2TaoliConditionsMet() &&
+            v2.studentEval >= 95 &&
+            v2.academicRep <= 50 &&
+            (v2.flags.memeSelfDeprecating || v2HasCatOrDogPet())
+        ) {
+            return v2EndWithMessage(
+                '🤳 网红院长\n\n你因亲民形象走红网络，被学生称为「表情包院长」。虽然学术上未建奇功，但你的社交账号粉丝破了十万，甚至受邀参加校园综艺。\n\n学校犹豫再三，决定把你当成招生宣传的一张名片。',
+                'ending'
+            );
+        }
+    }
+
+    // 任期满 8 学期 = 24 个月：终身院长 / 平庸过渡 / 默认总结 + 办公室之神彩蛋
     if (v2.totalMonth >= 24) {
+        const f = v2.funds;
+        const a = v2.academicRep;
+        const m = v2.morale;
+        const s = v2.studentEval;
+        const band = (x) => x >= 40 && x <= 60;
+        const fourOk = f >= 65 && a >= 65 && m >= 65 && s >= 65;
+        const mediocreCount = [f, a, m, s].filter(band).length;
+        const egg = v2OfficeGodMet()
+            ? '\n\n🐾 【彩蛋·办公室之神】你的办公室成了校园奇景：橘猫与校犬、陆龟与实验室里的小家伙各自占山为王。毕业典礼上，学生代表说：「我们院长教会我们的，是温柔。」'
+            : '';
+
+        if (fourOk) {
+            return v2EndWithMessage(
+                `🏅 终身院长\n\n你以稳健的手腕赢得了所有人的尊重。校党委全票通过你的连任，并授予「荣誉院长」称号。今后，系里的走廊会挂上你的照片，新生入学第一课就是听你的故事。${egg}`,
+                'ending'
+            );
+        }
+        if (mediocreCount >= 3) {
+            return v2EndWithMessage(
+                `🍂 平庸过渡\n\n四年任期平淡收场。学校认为你「无功无过」，将你调任至校图书馆担任馆长。你收拾办公室时，窗台上只剩那只陆龟趴着不动。赵敏替你把纸箱搬上了车。${egg}`,
+                'ending'
+            );
+        }
         const summary = v2BuildEndSummary();
-        return v2EndWithMessage(`🎉 任期结束\n\n你完成了 8 个学期的院长任期。\n\n${summary}`, 'ending');
-    }
-    // 高升结局（阈值高于旧版，避免少数月份堆叠行动即通关）
-    if (v2.academicRep >= 90 && v2.funds >= 78) {
-        return v2EndWithMessage('🚀 高升结局\n\n你的学术声誉和经费管理能力引起了校领导的注意。在一次闭门会议后，周校长亲自打电话：「上面有一个副校长的位置，我和书记都推荐了你。」\n\n这当然不是终点，但至少证明——你做对了什么。', 'ending');
-    }
-    // 学生口碑爆棚
-    if (v2.studentEval >= 88 && v2.morale >= 78 && v2.academicRep >= 72) {
-        return v2EndWithMessage('🌸 桃李满天下\n\n校友会年度报告上，你的名字被反复提及。学生评价调查中，「推荐院长」的比例达到了历史最高。\n\n一位刚毕业的学生在朋友圈里写道：「如果大学有形状，那大概就是我们院长的样子。」\n\n你看到这条动态时，默默截了图。', 'ending');
+        return v2EndWithMessage(`🎉 任期结束\n\n你完成了 8 个学期的院长任期。\n\n${summary}${egg}`, 'ending');
     }
     return false;
+}
+
+function v2OfferResign() {
+    if (v2.gameOver || v2.executionMode) return;
+    const can =
+        v2.semester >= 6 &&
+        v2.semester <= 8 &&
+        v2.totalMonth < 24 &&
+        (v2.flags.resignUnlocked || (v2.flags.lichengConflictCount || 0) >= 3);
+    if (!can) {
+        alert('当前不满足辞职条件（需第6–8学期，且经校领导约谈解锁，或与李立诚冲突累计满三次）。');
+        return;
+    }
+    if (!confirm('确定要辞职吗？将立即进入「急流勇退」结局。')) return;
+    v2EndWithMessage(
+        '👔 急流勇退\n\n你放下印章，回到教师队伍。虽然不再是院长，但讲台和实验室依旧欢迎你。多年后，年轻教师还会说：「那位主动让贤的老主任，是真懂学问的人。」',
+        'ending'
+    );
 }
 
 function v2EndWithMessage(msg, type) {
@@ -1548,21 +1768,49 @@ function v2UnlockTitles() {
     });
 }
 
+/** 按 id 解锁一条成就（用于无通用 cond 的特殊判定，如逆风推进） */
+function v2TryUnlockAchievementById(id) {
+    const a = ACHIEVEMENTS.find((x) => x.id === id);
+    if (!a) return false;
+    const meta = v2MetaLoad();
+    meta.ach = meta.ach || [];
+    if (meta.ach.includes(id)) return false;
+    meta.ach.push(id);
+    meta.points = (meta.points || 0) + a.points;
+    v2MetaSave(meta);
+    v2PushMail(`🏆 成就解锁：${a.name}（+${a.points}点）`);
+    v2QueueAchievementToast(a.name, a.points, a.desc);
+    if (document.getElementById('v2MessageBoard')) v2RenderMessages();
+    return true;
+}
+
 function v2CheckAchievements() {
     const meta = v2MetaLoad();
     meta.ach = meta.ach || [];
-    let toastDelay = 0;
-    ACHIEVEMENTS.forEach(a => {
-        if (!meta.ach.includes(a.id) && a.cond && a.cond(v2, meta)) {
-            meta.ach.push(a.id);
-            meta.points = (meta.points || 0) + a.points;
-            v2PushMail(`🏆 成就解锁：${a.name}（+${a.points}点）`);
-            const d = toastDelay;
-            setTimeout(() => v2QueueAchievementToast(a.name, a.points, a.desc), d);
-            toastDelay += 420;
+    const toGrant = [];
+    ACHIEVEMENTS.forEach((a) => {
+        if (!a.cond) return;
+        if (meta.ach.includes(a.id)) return;
+        let ok = false;
+        try {
+            ok = !!a.cond(v2, meta);
+        } catch (e) {
+            console.warn('achievement cond', a.id, e);
         }
+        if (ok) toGrant.push(a);
     });
-    v2MetaSave(meta);
+    toGrant.forEach((a) => {
+        meta.ach.push(a.id);
+        meta.points = (meta.points || 0) + a.points;
+    });
+    if (toGrant.length) {
+        v2MetaSave(meta);
+        toGrant.forEach((a, i) => {
+            v2PushMail(`🏆 成就解锁：${a.name}（+${a.points}点）`);
+            setTimeout(() => v2QueueAchievementToast(a.name, a.points, a.desc), i * 420);
+        });
+        if (document.getElementById('v2MessageBoard')) v2RenderMessages();
+    }
 }
 
 function v2EnsureToastHost() {
@@ -1677,6 +1925,7 @@ window.v2RemoveQueueItem = v2RemoveQueueItem;
 window.v2ExecuteMonth = v2ExecuteMonth;
 window.v2AbortExecution = v2AbortExecution;
 window.v2EndTerm = v2EndTerm;
+window.v2OfferResign = v2OfferResign;
 window.v2ContinueGame = v2ContinueGame;
 window.v2StaffTalk = v2StaffTalk;
 window.v2SaveGame = v2SaveGame;

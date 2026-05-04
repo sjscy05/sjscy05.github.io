@@ -1,25 +1,30 @@
 /**
- * 游玩周期蒙特卡洛模拟：随机抽取「1 日常 + 1 重点」行动 + 培养方案月度被动，
- * 不计入突发/主事件线，用于观察结局解锁大致需要多少「月」。
+ * 游玩周期蒙特卡洛模拟：每月叠培养被动；不含突发/主事件线。
+ *
+ * 策略：
+ *   random / greedy — 每月仅 1 日常 + 1 重点（旧模型，偏低估成长）。
+ *   fill / fill-greedy — 按游戏 28 天预算尽量排满队列（与正式玩法更接近），
+ *     先满足≥1日常+1重点且天数不超，再在剩余天数内反复加入可行行动直至塞不下。
  *
  * 用法（在 Dean_simulator 目录）：
  *   npm run balance
- *   node scripts/balance-sim.mjs --runs 3000 --dept cs --curriculum balanced
- *   node scripts/balance-sim.mjs --tune        # 粗扫阈值，使中位月数落在目标区间
+ *   npm run balance:fill
+ *   node scripts/balance-sim.mjs --runs 3000 --strategy fill --month-days 28
+ *   node scripts/balance-sim.mjs --tune
  *
- * 调节结局阈值：改下方 ENDING_RULES，或与 game.js 中 v2CheckEndings 保持同步。
+ * 调节结局阈值：改下方 DEFAULT_ENDINGS，或与 game.js 中 v2CheckEndings 保持同步。
  */
 
 import { createEventData } from '../assets/js/events.js';
-import { DEPT_CONFIG, CURRICULUM_PASSIVE, DIFFICULTY_PRESETS } from '../assets/js/config.js';
+import { DEPT_CONFIG, CURRICULUM_PASSIVE, DIFFICULTY_PRESETS, scaleTaskEffectGains } from '../assets/js/config.js';
 
 // —— 与 game.js v2CheckEndings 保持同步（调平衡时改两处）——
 const DEFAULT_ENDINGS = {
     gameOverFunds: -10,
     gameOverMorale: 0,
     tenureTotalMonth: 24,
-    gaosheng: { academicRep: 90, funds: 78 },
-    taoli: { studentEval: 88, morale: 78, academicRep: 72 }
+    gaosheng: { academicRep: 94, funds: 84 },
+    taoli: { studentEval: 92, morale: 82, academicRep: 76 }
 };
 
 function clamp(v, lo, hi) {
@@ -115,7 +120,83 @@ function pickGreedy(dailyActions, focusProjects) {
     return { daily: bestD, focus: bestF };
 }
 
-function runOneSimulation(rng, deptKey, curriculumKey, difficultyKey, rules, strategy, maxMonths = 120) {
+/** 在所有「日常+重点」组合中选分数和最高且总天数≤monthDays 的一对（用于 fill-greedy 起手） */
+function pickGreedyPair(dailyActions, focusProjects, monthDays) {
+    let bestD = dailyActions[0];
+    let bestF = focusProjects[0];
+    let bestSum = -Infinity;
+    for (const d of dailyActions) {
+        for (const f of focusProjects) {
+            if (d.days + f.days > monthDays) continue;
+            const sc = scoreAction(d.effect) + scoreAction(f.effect);
+            if (sc > bestSum) {
+                bestSum = sc;
+                bestD = d;
+                bestF = f;
+            }
+        }
+    }
+    return { daily: bestD, focus: bestF };
+}
+
+function pickRandomValidPair(dailyActions, focusProjects, monthDays, rng) {
+    for (let k = 0; k < 400; k++) {
+        const d = pick(dailyActions, rng);
+        const f = pick(focusProjects, rng);
+        if (d.days + f.days <= monthDays) return { d, f };
+    }
+    for (const d of dailyActions) {
+        for (const f of focusProjects) {
+            if (d.days + f.days <= monthDays) return { d, f };
+        }
+    }
+    throw new Error('balance-sim: 没有能在当月排下的日常+重点组合（请检查 month-days）');
+}
+
+/**
+ * @param {'random'|'greedy'} fillMode random=剩余天数内随机挑可行项；greedy=每次选 score 最高的可行项
+ */
+function packMonthFill(dailyActions, focusProjects, rng, monthDays, fillMode) {
+    const { d, f } =
+        fillMode === 'greedy'
+            ? (() => {
+                  const p = pickGreedyPair(dailyActions, focusProjects, monthDays);
+                  return { d: p.daily, f: p.focus };
+              })()
+            : pickRandomValidPair(dailyActions, focusProjects, monthDays, rng);
+
+    const queue = [
+        { effect: d.effect, days: d.days },
+        { effect: f.effect, days: f.days }
+    ];
+    let remaining = monthDays - d.days - f.days;
+
+    const pool = () => [
+        ...dailyActions.map((a) => ({ effect: a.effect, days: a.days })),
+        ...focusProjects.map((a) => ({ effect: a.effect, days: a.days }))
+    ];
+
+    const minDay = Math.min(
+        ...dailyActions.map((a) => a.days),
+        ...focusProjects.map((a) => a.days)
+    );
+
+    while (remaining >= minDay) {
+        const fit = pool().filter((a) => a.days <= remaining);
+        if (fit.length === 0) break;
+        let next;
+        if (fillMode === 'greedy') {
+            next = fit.reduce((best, a) => (scoreAction(a.effect) > scoreAction(best.effect) ? a : best));
+        } else {
+            next = pick(fit, rng);
+        }
+        queue.push(next);
+        remaining -= next.days;
+    }
+    return queue;
+}
+
+function runOneSimulation(rng, deptKey, curriculumKey, difficultyKey, rules, strategy, maxMonths = 120, monthDays = 28) {
     const state = initialState(deptKey, curriculumKey, difficultyKey);
     const { dailyActions, focusProjects } = createEventData();
     const passive = CURRICULUM_PASSIVE[curriculumKey] || CURRICULUM_PASSIVE.balanced;
@@ -124,18 +205,26 @@ function runOneSimulation(rng, deptKey, curriculumKey, difficultyKey, rules, str
     );
 
     for (let step = 0; step < maxMonths; step++) {
-        let daily;
-        let focus;
-        if (strategy === 'greedy') {
-            const g = pickGreedy(dailyActions, focusProjects);
-            daily = g.daily;
-            focus = g.focus;
+        if (strategy === 'fill' || strategy === 'fill-greedy') {
+            const fillMode = strategy === 'fill-greedy' ? 'greedy' : 'random';
+            const queue = packMonthFill(dailyActions, focusProjects, rng, monthDays, fillMode);
+            for (const t of queue) {
+                applyEffect(state, scaleTaskEffectGains(t.effect));
+            }
         } else {
-            daily = pick(dailyActions, rng);
-            focus = pick(focusProjects, rng);
+            let daily;
+            let focus;
+            if (strategy === 'greedy') {
+                const g = pickGreedy(dailyActions, focusProjects);
+                daily = g.daily;
+                focus = g.focus;
+            } else {
+                daily = pick(dailyActions, rng);
+                focus = pick(focusProjects, rng);
+            }
+            applyEffect(state, scaleTaskEffectGains(daily.effect));
+            applyEffect(state, scaleTaskEffectGains(focus.effect));
         }
-        applyEffect(state, daily.effect);
-        applyEffect(state, focus.effect);
         applyEffect(state, flatPassive);
         advanceMonth(state);
         const end = checkEnding(state, rules);
@@ -161,7 +250,8 @@ function parseArgs() {
         seed: Date.now() % 1e9,
         targetLo: 10,
         targetHi: 22,
-        strategy: 'random'
+        strategy: 'random',
+        monthDays: 28
     };
     for (let i = 0; i < a.length; i++) {
         if (a[i] === '--runs') out.runs = parseInt(a[++i], 10);
@@ -173,6 +263,7 @@ function parseArgs() {
         else if (a[i] === '--target-lo') out.targetLo = parseFloat(a[++i]);
         else if (a[i] === '--target-hi') out.targetHi = parseFloat(a[++i]);
         else if (a[i] === '--strategy') out.strategy = a[++i];
+        else if (a[i] === '--month-days') out.monthDays = parseInt(a[++i], 10);
     }
     return out;
 }
@@ -203,19 +294,26 @@ function main() {
     let rules = { ...DEFAULT_ENDINGS };
 
     console.log('=== 院长模拟器 · 游玩周期模拟 ===\n');
-    console.log(`院系=${args.dept} 培养=${args.curriculum} 难度=${args.difficulty} 策略=${args.strategy} 回合=${args.runs} seed=${args.seed}`);
     console.log(
-        args.strategy === 'greedy'
-            ? '规则：每月「贪心」选日常+重点（偏推高数值），再叠培养被动；不含事件。用于估计最短通关月数下界。'
-            : '规则：每月随机 1 项日常 + 1 项重点，再叠当月培养被动（与游戏结算顺序一致）；不含事件/突发。'
+        `院系=${args.dept} 培养=${args.curriculum} 难度=${args.difficulty} 策略=${args.strategy} 月天数=${args.monthDays} 回合=${args.runs} seed=${args.seed}`
     );
+    const md = args.monthDays;
+    const desc =
+        args.strategy === 'greedy'
+            ? '规则：每月「贪心」选 1 日常+1 重点，再叠培养被动；不含事件。用于旧模型下最短通关下界。'
+            : args.strategy === 'fill'
+              ? `规则：每月按「${md}天」预算尽量排满日常/重点（随机起手+随机塞满），逐项结算效果后再叠培养被动；不含下属/突发。`
+              : args.strategy === 'fill-greedy'
+                ? `规则：每月 ${md} 天内贪心排满（起手与加塞均取加权分最高），再叠培养被动；若常年期满则说明加权分与高升/桃李多维门槛不对齐，请以 fill（随机填满）为主力参考。`
+                : '规则：每月仅随机 1 日常 + 1 重点，再叠培养被动（旧简化模型，不含 28 天排满）。';
+    console.log(desc);
     console.log('');
 
     const results = [];
     const byType = Object.create(null);
 
     for (let i = 0; i < args.runs; i++) {
-        const r = runOneSimulation(rng, args.dept, args.curriculum, args.difficulty, rules, args.strategy);
+        const r = runOneSimulation(rng, args.dept, args.curriculum, args.difficulty, rules, args.strategy, 120, args.monthDays);
         results.push(r.months);
         const k = r.ending.type;
         byType[k] = (byType[k] || 0) + 1;
@@ -249,7 +347,7 @@ function main() {
     } else if (p50 > args.targetHi) {
         console.log(`\n⚠ 中位月数 ${p50} > 目标上限 ${args.targetHi}：可考虑略降阈值或加强正向日常池。`);
     } else {
-        console.log(`\n✓ 中位月数 ${p50} 落在目标区间 [${args.targetLo}, ${args.targetHi}]（粗粒度，仅随机行动模型）。`);
+        console.log(`\n✓ 中位月数 ${p50} 落在目标区间 [${args.targetLo}, ${args.targetHi}]（粗粒度，当前策略=${args.strategy}）。`);
     }
 
     if (args.tune) {
@@ -272,7 +370,9 @@ function main() {
                 const rng2 = makeRng(args.seed + addGaosheng * 100 + addTaoli);
                 const monthsArr = [];
                 for (let i = 0; i < Math.min(800, args.runs); i++) {
-                    monthsArr.push(runOneSimulation(rng2, args.dept, args.curriculum, args.difficulty, trial, args.strategy).months);
+                    monthsArr.push(
+                        runOneSimulation(rng2, args.dept, args.curriculum, args.difficulty, trial, args.strategy, 120, args.monthDays).months
+                    );
                 }
                 monthsArr.sort((a, b) => a - b);
                 const m50 = percentile(monthsArr, 0.5);

@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "balance": "node scripts/balance-sim.mjs",
+    "balance:fill": "node scripts/balance-sim.mjs --strategy fill",
     "balance:tune": "node scripts/balance-sim.mjs --tune"
   }
 }
