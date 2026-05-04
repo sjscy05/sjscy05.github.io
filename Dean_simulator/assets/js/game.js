@@ -3,7 +3,7 @@ import {
     INITIAL_RELATION, BACKGROUND_POOL, STAFF_TEMPLATES, STAFF_PERSONA_POOL,
     DEPT_CONFIG, CURRICULUM_PASSIVE, OFFICE_DECOR, TITLE_RULES, ACHIEVEMENTS,
     DIFFICULTY_PRESETS, STUDENT_ARCHETYPES
-} from './config.js?v=firstterm';
+} from './config.js?v=savesfix';
 import {
     STUDENT_COMMENTS, TEACHER_COMMENTS, LEADERSHIP_COMMENTS,
     GENERIC_RANDOM_EVENTS, REAL_UNIVERSITY_EVENTS, PET_EVENTS,
@@ -133,39 +133,95 @@ function v2PushMail(text) {
 }
 
 // ========== 存档 ==========
-function v2SaveGame(slot) {
-    if (!slot) slot = 'auto';
+function v2SaveGame(slot, opts) {
+    if (slot === undefined || slot === null || slot === '') slot = 'auto';
+    const silent = opts && opts.silent;
     const data = JSON.parse(JSON.stringify(v2));
     data._saveVersion = 2;
+    const json = JSON.stringify(data);
     try {
-        localStorage.setItem('dean_sim_save_' + slot, JSON.stringify(data));
-        v2PushMail(`📁 已存档（${slot}）`);
-        v2RenderMessages();
+        localStorage.setItem('dean_sim_save_' + slot, json);
+        // 手动存档位同步写入 auto，便于首页「继续」与浏览器缓存迁移后仍能读到进度
+        if (String(slot) !== 'auto') {
+            localStorage.setItem('dean_sim_save_auto', json);
+        }
+        if (!silent) {
+            v2PushMail(`📁 已存档（${slot}）`);
+            v2RenderMessages();
+        }
     } catch (e) {
         alert('存档失败：' + e.message);
     }
 }
 
+/** 静默自动存档（执行回合结束等时机调用，不发邮件） */
+function v2PersistAutoSave() {
+    try {
+        v2SaveGame('auto', { silent: true });
+    } catch (e) { /* 存储满或隐私模式：静默跳过 */ }
+}
+
+function v2ApplyLoadedSave(data) {
+    const defaults = JSON.parse(JSON.stringify(v2DefaultState()));
+    Object.assign(v2, defaults);
+    const snapshot = { ...data };
+    delete snapshot._saveVersion;
+    Object.assign(v2, snapshot);
+    v2.flags = { ...v2DefaultState().flags, ...(data.flags && typeof data.flags === 'object' ? data.flags : {}) };
+    const baseRel = JSON.parse(JSON.stringify(INITIAL_RELATION));
+    v2.relations = { ...baseRel, ...(data.relations && typeof data.relations === 'object' ? data.relations : {}) };
+    if (!Array.isArray(v2.staff)) v2.staff = [];
+    if (!Array.isArray(v2.messages)) v2.messages = [];
+    if (!Array.isArray(v2.actionQueue)) v2.actionQueue = [];
+    if (!Array.isArray(v2.backgroundTraits)) v2.backgroundTraits = [];
+    if (!('ageProfile' in data)) v2.ageProfile = null;
+    v2.executionMode = false;
+    v2.typingTimer = null;
+    v2.pendingExecutionQueue = null;
+    v2.executionTimeline = null;
+    v2.executionStep = 0;
+    v2.executionRandomEvents = null;
+    v2.executionPendingEvent = null;
+    v2.gameOver = false;
+}
+
 function v2LoadGame(slot) {
-    if (!slot) slot = 'auto';
+    if (slot === undefined || slot === null || slot === '') slot = 'auto';
     const raw = localStorage.getItem('dean_sim_save_' + slot);
     if (!raw) return alert('该存档位为空。');
+    let data;
     try {
-        const data = JSON.parse(raw);
-        Object.assign(v2, data);
-        if (!('ageProfile' in data)) v2.ageProfile = null;
-        if (!Array.isArray(data.backgroundTraits)) v2.backgroundTraits = [];
-        v2.executionMode = false;
-        v2.typingTimer = null;
+        data = JSON.parse(raw);
+    } catch (e) {
+        alert('读档失败：存档数据损坏或格式无效。');
+        return;
+    }
+    if (!data || typeof data !== 'object') {
+        alert('读档失败：存档格式无效。');
+        return;
+    }
+    try {
+        v2ApplyLoadedSave(data);
+        v2UpdateStats();
         v2PushMail('📂 读档完成');
         v2RenderPlaying();
     } catch (e) {
-        alert('读档失败：存档数据损坏。');
+        alert('读档失败：状态恢复出错（可尝试新开一局）。');
+        console.error(e);
     }
 }
 
 function v2HasSave(slot) {
     return !!localStorage.getItem('dean_sim_save_' + slot);
+}
+
+/** 是否有任一可读存档（自动存档优先于手动档位顺序） */
+function v2GetContinueSlot() {
+    if (v2HasSave('auto')) return 'auto';
+    for (let i = 1; i <= 3; i++) {
+        if (v2HasSave(i)) return i;
+    }
+    return null;
 }
 
 function v2MetaLoad() {
@@ -407,6 +463,7 @@ function v2InitGame() {
     v2.availableDays = v2CalcAvailableDays();
     v2UpdateStats();
     v2RenderPlaying();
+    v2PersistAutoSave();
 }
 
 // ========== 主游戏渲染 ==========
@@ -1134,7 +1191,7 @@ function v2ExecFinish() {
     v2.currentEventResolved = false;
     v2.termEndShown = false;
 
-    // 检测学期结束
+    v2PersistAutoSave();
     v2CheckEndings();
     if (v2.gameOver) return;
 
@@ -1239,6 +1296,7 @@ function v2EndTerm() {
     v2.currentEvent = null;
     v2.currentEventResolved = false;
 
+    v2PersistAutoSave();
     v2CheckEndings();
     if (v2.gameOver) return;
 
@@ -1559,18 +1617,23 @@ window.v2StaffTalk = v2StaffTalk;
 window.v2SaveGame = v2SaveGame;
 window.v2LoadGame = v2LoadGame;
 window.v2HasSave = v2HasSave;
+window.v2LoadContinue = () => {
+    const slot = v2GetContinueSlot();
+    if (slot != null) v2LoadGame(slot);
+};
 window.v2InitGame = v2InitGame;
 window.v2Typewriter = v2Typewriter;
 
 // ========== 启动 ==========
 document.addEventListener('DOMContentLoaded', () => {
-    // 检查是否有自动存档
-    if (v2HasSave('auto')) {
-        const app = document.getElementById('app');
+    const continueSlot = v2GetContinueSlot();
+    const app = document.getElementById('app');
+    if (continueSlot != null) {
+        const slotHint = continueSlot === 'auto' ? '自动存档' : `存档槽 ${continueSlot}`;
         app.innerHTML = `<div class="page-transition-in" style="max-width:500px;margin:auto;text-align:center;">
             <h2>🏫 院长模拟器</h2>
-            <div style="margin:20px 0;color:#8fa8b8;font-size:0.88em;">检测到之前的存档</div>
-            <button class="btn" onclick="if(v2LoadGame('auto')){}" style="text-align:center;margin-bottom:6px;">📂 继续上次的任期</button>
+            <div style="margin:20px 0;color:#8fa8b8;font-size:0.88em;">检测到本地 ${slotHint}</div>
+            <button class="btn" onclick="v2LoadContinue()" style="text-align:center;margin-bottom:6px;">📂 继续游戏</button>
             <button class="btn warning" onclick="v2RestartNewGame()" style="text-align:center;">🔄 重新开始</button>
         </div>`;
     } else {
