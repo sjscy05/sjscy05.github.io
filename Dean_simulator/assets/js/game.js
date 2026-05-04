@@ -3,7 +3,7 @@ import {
     INITIAL_RELATION, BACKGROUND_POOL, STAFF_TEMPLATES, STAFF_PERSONA_POOL,
     DEPT_CONFIG, CURRICULUM_PASSIVE, OFFICE_DECOR, TITLE_RULES, ACHIEVEMENTS,
     DIFFICULTY_PRESETS, STUDENT_ARCHETYPES
-} from './config.js?v=saveui';
+} from './config.js?v=balance';
 import {
     STUDENT_COMMENTS, TEACHER_COMMENTS, LEADERSHIP_COMMENTS,
     GENERIC_RANDOM_EVENTS, REAL_UNIVERSITY_EVENTS, PET_EVENTS,
@@ -1391,12 +1391,12 @@ function v2CheckEndings() {
         const summary = v2BuildEndSummary();
         return v2EndWithMessage(`🎉 任期结束\n\n你完成了 8 个学期的院长任期。\n\n${summary}`, 'ending');
     }
-    // 高升结局
-    if (v2.academicRep >= 85 && v2.funds >= 75) {
+    // 高升结局（阈值高于旧版，避免少数月份堆叠行动即通关）
+    if (v2.academicRep >= 90 && v2.funds >= 78) {
         return v2EndWithMessage('🚀 高升结局\n\n你的学术声誉和经费管理能力引起了校领导的注意。在一次闭门会议后，周校长亲自打电话：「上面有一个副校长的位置，我和书记都推荐了你。」\n\n这当然不是终点，但至少证明——你做对了什么。', 'ending');
     }
     // 学生口碑爆棚
-    if (v2.studentEval >= 85 && v2.morale >= 75 && v2.academicRep >= 70) {
+    if (v2.studentEval >= 88 && v2.morale >= 78 && v2.academicRep >= 72) {
         return v2EndWithMessage('🌸 桃李满天下\n\n校友会年度报告上，你的名字被反复提及。学生评价调查中，「推荐院长」的比例达到了历史最高。\n\n一位刚毕业的学生在朋友圈里写道：「如果大学有形状，那大概就是我们院长的样子。」\n\n你看到这条动态时，默默截了图。', 'ending');
     }
     return false;

@@ -1,0 +1,9 @@
+{
+  "name": "dean-simulator-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "balance": "node scripts/balance-sim.mjs",
+    "balance:tune": "node scripts/balance-sim.mjs --tune"
+  }
+}
